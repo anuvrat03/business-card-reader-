@@ -131,10 +131,12 @@
                     method: "POST",
                     headers: {
                         "Authorization": `Bearer ${apiKey}`,
-                        "Content-Type": "application/json"
+                        "Content-Type": "application/json",
+                        "HTTP-Referer": window.location.href,
+                        "X-Title": "AI Business Card Extractor"
                     },
                     body: JSON.stringify({
-                        "model": "google/gemini-flash-1.5", // Updated to stable supported model name
+                        "model": "google/gemini-2.0-flash-001", // Verified active OpenRouter vision model
                         "messages": [
                             {
                                 "role": "user",
@@ -157,12 +159,11 @@
                 const data = await response.json();
                 
                 if (data.error) {
-                    throw new Error(data.error.message || 'API Error');
+                    throw new Error(data.error.message || JSON.stringify(data.error));
                 }
 
                 if (data.choices && data.choices[0].message.content) {
                     let content = data.choices[0].message.content;
-                    // Clean markdown code blocks if returned by model
                     content = content.replace(/```json/g, '').replace(/```/g, '').trim();
                     const result = JSON.parse(content);
 
@@ -174,7 +175,7 @@
                     document.getElementById('fieldMobile').value = result.mobile || '';
                     statusEl.innerText = "Extracted successfully!";
                 } else {
-                    throw new Error('Invalid response structure');
+                    throw new Error('Invalid response structure from AI');
                 }
 
                 setTimeout(() => statusEl.classList.add('hidden'), 3000);
