@@ -1,497 +1,313 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Card Details Extractor</title>
-<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
-<style>
-  :root{
-    --bg:#f4f6fb; --card:#ffffff; --ink:#1e2433; --muted:#6b7385;
-    --accent:#4353ff; --accent-soft:#eef0ff; --ok:#0a8a4a; --ok-soft:#e6f6ee;
-    --warn:#b45309; --warn-soft:#fef3e2; --err:#b91c1c; --err-soft:#fee2e2;
-    --line:#e3e7f0; --radius:14px;
-  }
-  *{box-sizing:border-box;margin:0;padding:0}
-  body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--ink);min-height:100vh}
-  .wrap{max-width:860px;margin:0 auto;padding:24px 16px 60px}
-  header{text-align:center;margin-bottom:22px}
-  header h1{font-size:1.7rem;font-weight:700}
-  header p{color:var(--muted);margin-top:6px;font-size:.95rem}
-  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:20px;margin-bottom:18px;box-shadow:0 1px 3px rgba(20,30,60,.05)}
-  .card h2{font-size:1.02rem;margin-bottom:14px;display:flex;align-items:center;gap:8px}
-  .card h2 .n{background:var(--accent);color:#fff;width:22px;height:22px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:.78rem;flex:none}
-  textarea{width:100%;min-height:150px;border:1px solid var(--line);border-radius:10px;padding:12px;font:inherit;font-size:.95rem;resize:vertical;background:#fbfcfe}
-  textarea:focus{outline:2px solid var(--accent-soft);border-color:var(--accent)}
-  .drop{border:2px dashed #c4cbe0;border-radius:12px;padding:26px 14px;text-align:center;color:var(--muted);cursor:pointer;transition:.2s;background:#fbfcfe}
-  .drop.drag{border-color:var(--accent);background:var(--accent-soft)}
-  .drop strong{color:var(--ink)}
-  .btn{display:inline-flex;align-items:center;gap:7px;border:none;border-radius:9px;padding:10px 16px;font:inherit;font-size:.9rem;font-weight:600;cursor:pointer;transition:.15s}
-  .btn:disabled{opacity:.5;cursor:not-allowed}
-  .btn.primary{background:var(--accent);color:#fff}
-  .btn.primary:hover:not(:disabled){background:#3240e0}
-  .btn.ghost{background:var(--accent-soft);color:var(--accent)}
-  .btn.ghost:hover:not(:disabled){background:#dfe3ff}
-  .btn.small{padding:7px 12px;font-size:.82rem}
-  .row{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
-  #preview{max-width:100%;max-height:260px;border-radius:10px;border:1px solid var(--line);display:none;margin-top:12px}
-  #progressWrap{display:none;margin-top:12px}
-  #progressBar{height:8px;background:var(--accent-soft);border-radius:6px;overflow:hidden}
-  #progressFill{height:100%;width:0;background:var(--accent);transition:width .3s}
-  #progressText{font-size:.82rem;color:var(--muted);margin-top:6px}
-  .notice{display:none;margin-top:12px;padding:11px 13px;border-radius:10px;font-size:.86rem;line-height:1.5}
-  .notice.warn{display:block;background:var(--warn-soft);color:var(--warn);border:1px solid #f3d9a4}
-  .notice.err{display:block;background:var(--err-soft);color:var(--err);border:1px solid #f5c2c2}
-  .notice.info{display:block;background:var(--ok-soft);color:var(--ok);border:1px solid #bfe8d0}
-  .field{margin-bottom:14px}
-  .field label{display:flex;align-items:center;gap:8px;font-weight:600;font-size:.86rem;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);margin-bottom:6px}
-  .field label .ico{font-size:1rem}
-  .field input{width:100%;border:1px solid var(--line);border-radius:9px;padding:11px 12px;font:inherit;font-size:.95rem;background:#fbfcfe}
-  .field input:focus{outline:2px solid var(--accent-soft);border-color:var(--accent)}
-  .field input.filled{border-left:3px solid var(--ok);background:var(--ok-soft)}
-  .field input.missing{border-left:3px solid #e2a400}
-  .hint{font-size:.78rem;color:var(--muted);margin-top:4px}
-  .badge{font-size:.72rem;padding:2px 8px;border-radius:20px;font-weight:600}
-  .badge.ok{background:var(--ok-soft);color:var(--ok)}
-  .badge.miss{background:var(--warn-soft);color:var(--warn)}
-  .rawbox{background:#f6f8fd;border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-size:.8rem;color:var(--muted);white-space:pre-wrap;max-height:180px;overflow:auto}
-  .rawmeta{font-size:.75rem;color:var(--muted);margin-top:6px}
-  #actions{display:flex;gap:10px;flex-wrap:wrap}
-  .history-item{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line);font-size:.9rem}
-  .history-item:last-child{border:none}
-  .history-item .who{font-weight:600}
-  .history-item .when{color:var(--muted);font-size:.78rem}
-  footer{text-align:center;color:var(--muted);font-size:.78rem;margin-top:26px;line-height:1.6}
-  #toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;padding:11px 20px;border-radius:10px;font-size:.88rem;opacity:0;pointer-events:none;transition:.3s;z-index:9;max-width:90%;text-align:center}
-  #toast.show{opacity:1}
-  @media(max-width:560px){header h1{font-size:1.35rem}}
-</style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Business & Invitation Card Extractor</title>
+    <!-- Tailwind CSS for clean mobile-friendly UI -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Tesseract.js for OCR -->
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 </head>
-<body>
-<div class="wrap">
-  <header>
-    <h1>📇 Card Details Extractor</h1>
-    <p>Paste text from a business or invitation card — or upload a photo — and get Name, Address, Email, Mobile &amp; Date neatly organised and ready to share.</p>
-  </header>
+<body class="bg-slate-50 text-slate-800 min-h-screen p-3 sm:p-6">
+    <div class="max-w-xl mx-auto space-y-6">
+        
+        <!-- Header -->
+        <header class="text-center">
+            <h1 class="text-xl sm:text-2xl font-bold text-blue-600">Card Details Extractor</h1>
+            <p class="text-xs sm:text-sm text-slate-500">Extracts clean contact & address info instantly</p>
+        </header>
 
-  <div class="card">
-    <h2><span class="n">1</span> Paste card text</h2>
-    <textarea id="textInput" placeholder="Paste the card text here…&#10;&#10;e.g.&#10;Rahul Sharma&#10;Sales Manager, Sharma Technologies Pvt Ltd&#10;12 MG Road, Bengaluru 560001&#10;+91 98765 43210 · rahul@sharmatech.com"></textarea>
-    <div class="row"><button class="btn primary" id="btnText">⚡ Extract fields</button><button class="btn ghost small" id="btnClearText">Clear</button></div>
-  </div>
+        <!-- Step 1: Paste Text -->
+        <section class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 space-y-3">
+            <label class="block text-xs font-semibold uppercase tracking-wider text-blue-600">1. Paste card text</label>
+            <textarea id="rawTextInput" rows="3" class="w-full p-3 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" placeholder="Paste card text here..."></textarea>
+            <div class="flex gap-2">
+                <button onclick="processText()" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg text-sm transition">Extract Fields</button>
+                <button onclick="clearAll()" class="bg-slate-100 hover:bg-slate-200 text-slate-600 font-medium py-2 px-4 rounded-lg text-sm transition">Clear</button>
+            </div>
+        </section>
 
-  <div class="card">
-    <h2><span class="n">2</span> …or upload a card photo</h2>
-    <div class="drop" id="drop">
-      <div style="font-size:1.8rem;margin-bottom:6px">🖼️</div>
-      <strong>Click to choose an image</strong> or drag &amp; drop it here<br>
-      <span style="font-size:.8rem">JPG / PNG / WebP — text is read on your device (OCR)<br>
-      📸 Best results: <strong>fill the whole frame with the card</strong>, sharp and well-lit</span>
+        <!-- Step 2: Upload Photo -->
+        <section class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 space-y-3">
+            <label class="block text-xs font-semibold uppercase tracking-wider text-blue-600">2. ...or upload a card photo</label>
+            <input type="file" id="imageInput" accept="image/*" class="w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer" onchange="handleImageUpload(event)">
+            <div id="ocrStatus" class="text-xs text-slate-500 italic hidden">Scanning image with OCR... Please wait.</div>
+        </section>
+
+        <!-- Step 3: Extracted Details -->
+        <section class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 space-y-4">
+            <label class="block text-xs font-semibold uppercase tracking-wider text-blue-600">3. Extracted details (editable)</label>
+            
+            <!-- Name -->
+            <div>
+                <label class="block text-xs font-medium text-slate-500 mb-1">Name</label>
+                <input type="text" id="fieldName" class="w-full p-2.5 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" placeholder="Person name">
+            </div>
+
+            <!-- Company / Designation -->
+            <div>
+                <label class="block text-xs font-medium text-slate-500 mb-1">Company & Designation</label>
+                <input type="text" id="fieldCompany" class="w-full p-2.5 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" placeholder="Company, Title, Role">
+            </div>
+
+            <!-- Address -->
+            <div>
+                <label class="block text-xs font-medium text-slate-500 mb-1">Address</label>
+                <textarea id="fieldAddress" rows="2" class="w-full p-2.5 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" placeholder="Street address, city, PIN/ZIP"></textarea>
+            </div>
+
+            <!-- Email -->
+            <div>
+                <label class="block text-xs font-medium text-slate-500 mb-1">Email</label>
+                <input type="text" id="fieldEmail" class="w-full p-2.5 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" placeholder="Email address">
+            </div>
+
+            <!-- Mobile -->
+            <div>
+                <label class="block text-xs font-medium text-slate-500 mb-1">Mobile</label>
+                <input type="text" id="fieldMobile" class="w-full p-2.5 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" placeholder="Phone / mobile number">
+            </div>
+
+            <!-- Date -->
+            <div>
+                <label class="block text-xs font-medium text-slate-500 mb-1">Date</label>
+                <input type="text" id="fieldDate" class="w-full p-2.5 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" placeholder="Event / appointment date">
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="flex flex-wrap gap-2 pt-2">
+                <button onclick="copyAll()" class="bg-slate-800 hover:bg-slate-900 text-white text-xs font-medium py-2 px-3 rounded-lg transition">Copy All</button>
+                <button onclick="shareData()" class="bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium py-2 px-3 rounded-lg transition">Share</button>
+                <button onclick="saveContact()" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium py-2 px-3 rounded-lg transition">Save vCard (.vcf)</button>
+                <button onclick="saveHistory()" class="bg-amber-600 hover:bg-amber-700 text-white text-xs font-medium py-2 px-3 rounded-lg transition">Save to History</button>
+            </div>
+        </section>
+
+        <!-- Saved History Section -->
+        <section class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 space-y-3">
+            <div class="flex justify-between items-center">
+                <label class="block text-xs font-semibold uppercase tracking-wider text-slate-500">Saved on this device</label>
+                <button onclick="clearHistory()" class="text-xs text-red-500 hover:underline">Clear history</button>
+            </div>
+            <div id="historyList" class="space-y-2 text-sm text-slate-600 max-h-40 overflow-y-auto">
+                <p class="text-xs text-slate-400 italic">No saved cards yet.</p>
+            </div>
+        </section>
+
+        <footer class="text-center text-xs text-slate-400 pb-4">
+            Runs locally in your browser — no data leaves your device.
+        </footer>
     </div>
-    <input type="file" id="fileInput" accept="image/*" hidden>
-    <img id="preview" alt="Card preview">
-    <div class="notice" id="imgNotice"></div>
-    <div id="progressWrap"><div id="progressBar"><div id="progressFill"></div></div><div id="progressText"></div></div>
-  </div>
 
-  <div class="card" id="resultCard" style="display:none">
-    <h2><span class="n">3</span> Extracted details <span style="font-weight:400;color:var(--muted);font-size:.8rem">— editable, click any field to fix</span></h2>
-    <div id="fields"></div>
-    <div id="actions"></div>
-    <details style="margin-top:14px" id="rawDetails">
-      <summary style="cursor:pointer;font-size:.82rem;color:var(--muted)">Show raw text used</summary>
-      <div class="rawbox" id="rawBox" style="margin-top:8px"></div>
-      <div class="rawmeta" id="rawMeta"></div>
-    </details>
-  </div>
+    <!-- JavaScript Parsing & OCR Logic -->
+    <script>
+        function processText() {
+            const rawText = document.getElementById('rawTextInput').value;
+            if (!rawText.trim()) return;
 
-  <div class="card" id="historyCard" style="display:none">
-    <h2><span class="n">🕘</span> Saved on this device</h2>
-    <div id="historyList"></div>
-    <div class="row"><button class="btn ghost small" id="btnClearHist">Clear history</button></div>
-  </div>
+            const lines = rawText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+            
+            let name = "";
+            let companyParts = [];
+            let addressParts = [];
+            let email = "";
+            let mobile = "";
+            let date = "";
 
-  <footer>
-    Everything runs locally in your browser — no data leaves your device.<br>
-    Image text recognition (OCR) needs internet on first use to load the engine. Accuracy is best with sharp, well-lit photos.
-  </footer>
-</div>
-<div id="toast"></div>
+            const emailRegex = /[\w.-]+@[\w.-]+\.\w+/;
+            // Matches phone numbers with country codes or standard 10 digit formats
+            const mobileRegex = /(\+?\d{1,3}[-.\s]?)?\(?\d{2,4}\)?[-.\s]?\d{3,5}[-.\s]?\d{4}/;
+            const dateRegex = /\b(\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}[/-]\d{1,2}[/-]\d{1,2})\b/;
+            
+            const companyKeywords = ['pvt', 'ltd', 'limited', 'corp', 'corporation', 'technologies', 'solutions', 'associates', 'enterprises', 'industries', 'group', 'services', 'marketing', 'consultants'];
+            const titleKeywords = ['manager', 'director', 'founder', 'ceo', 'partner', 'consultant', 'executive', 'officer', 'president', 'lead', 'head'];
+            const addressKeywords = ['road', 'rd', 'street', 'st', 'nagar', 'colony', 'floor', 'block', 'opp', 'near', 'lane', 'avenue', 'h.no', 'flat', 'plot', 'district', 'telangana', 'hyderabad', 'bengaluru', 'delhi', 'mumbai', 'pin', 'zip'];
 
-<script>
-/* ---------- extraction engine (embedded, tested) ---------- */
-const CardExtractor = (function(){
-  var MONTH_ALT='Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t)?(?:ember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?';
-  var DESIGNATION_WORDS=['manager','director','ceo','cto','cfo','coo','founder','co-founder','owner','president','vp','sales','marketing','engineer','developer','consultant','executive','officer','accountant','architect','designer','doctor','lawyer','advocate','professor','teacher','head','lead','chief','admin','coordinator','specialist','analyst','associate','assistant','trainee','intern','representative','agent','proprietor','partner','chairman','secretary','treasurer','principal','dean','coach','chef','photographer','editor','writer','author','student'];
-  var COMPANY_WORDS=['pvt','private','ltd','limited','llp','inc','incorporated','llc','corp','corporation','co','company','technologies','technology','tech','solutions','services','enterprises','enterprise','industries','group','associates','partners','systems','consulting','consultancy','labs','lab','studio','global','globals','international','traders','agency','agencies','hospital','clinic','hotel','resort','restaurant','cafe','academy','school','institute','college','university','foundation','trust','society','bank','insurance','realty','real-estate','infrastructure','constructions','builders','developers','motors','automobiles','automotives','electronics','exports','imports','textiles','garments','pharma','pharmaceuticals','healthcare','wellness','spa','salon','photography','films','media','events','eventz','caterers','catering','decorators','travels','logistics','transport','shipping','store','stores','mart','bazaar','boutique','diamond','jewellers','jewelry','dental','diagnostic','pharmacy','hardware','software','web','digital','it','bpo','kpo'];
-  var ADDRESS_KEYWORDS=['street','st.','st,','road','rd.','rd,','avenue','ave.','ave,','boulevard','blvd','lane','ln.','drive','court','ct.','suite','apt','apartment','flat','floor','plot','house','building','tower','nagar','marg','colony','vihar','enclave','layout','sector','block','phase','extension','crossing','chowk','chowraha','opp.','opposite','near','behind','beside','next to','landmark','pincode','pin code','zip','postal','highway','hwy','circle','cross','main road','branch','office no','door no','door no.','d.no','gali','ward','mohalla','gated','complex','plaza','centre','center','mall','market','bazar','ganj','pur','puram','abadi','colony'];
-  var LABEL_LINE_RE=/^\s*(name|address|addr|email|e-mail|mail|mobile|mob|phone|tel|telephone|contact|date|dob|rsvp|designation|company|organisation|organization|website|web|url|fax|age|time|venue|r\.s\.v\.p)\s*[:\-–]\s*/i;
-  function cleanLine(s){return s.replace(/^[\s,\-–—:*#>•]+|[\s,;]+$/g,'').trim();}
-  function splitLines(text){return String(text||'').split(/\r?\n/).map(function(l){return l.trim();});}
-  function hasWord(line,list){var words=line.toLowerCase().replace(/[()]/g,' ').split(/[^a-z]+/);return words.some(function(w){return list.indexOf(w)!==-1;});}
-  function extractEmail(text){var m=String(text||'').match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g);if(!m)return '';for(var i=0;i<m.length;i++){if(!/^[0-9.\-_@]+$/.test(m[i]))return m[i];}return m[0]||'';}
-  function isDateShaped(raw){var s=raw.trim();if(/^\d{1,2}\s*[\/\-.]\s*\d{1,2}\s*[\/\-.]\s*\d{2,4}$/.test(s))return true;if(/^\d{4}\s*[\/\-.]\s*\d{1,2}\s*[\/\-.]\s*\d{1,2}$/.test(s))return true;return false;}
-  function extractPhones(text){
-    var t=String(text||''),found=[],seen={},mobileLabelSeen=false,m;
-    function push(raw,weight){raw=raw.trim().replace(/[.,;]+$/,'');var digits=raw.replace(/\D/g,'');if(digits.length<7||digits.length>15)return;if(isDateShaped(raw))return;if(/^\d{4}\s*[-–]\s*\d{4}$/.test(raw))return;if(seen[digits])return;seen[digits]=true;found.push({raw:raw,digits:digits,w:weight});}
-    var labelRe=/\b(tel|telephone|phone|mob|mobile|cell|whatsapp|ph|contact|call|m|mo)\b\s*[.:#\-]?\s*((?:\+|00)?[\d][\d\s\-().\/]{5,22}\d)/gi;
-    while((m=labelRe.exec(t))){var lbl=m[1].toLowerCase();var isMobile=lbl==='mob'||lbl==='mobile'||lbl==='cell'||lbl==='whatsapp'||lbl==='m'||lbl==='mo';if(isMobile)mobileLabelSeen=true;push(m[2],isMobile?10:7);}
-    var genericRe=/(?:\+|00)?\d[^\S\n\r]*[\d \-().\/]{5,22}\d/g;
-    while((m=genericRe.exec(t))){
-      var raw=m[0],digits=raw.replace(/\D/g,''),w=0;
-      if(/^\+/.test(raw.trim()))w=6;else if(/^00\d/.test(raw.trim()))w=6;else if(digits.length===10&&/^[6-9]/.test(digits))w=5;else if(digits.length===10)w=3;else if(digits.length>=8)w=2;else w=1;
-      if(seen[digits])continue;
-      var before=t.slice(Math.max(0,m.index-30),m.index).toLowerCase(),after=t.slice(m.index+raw.length,m.index+raw.length+15).toLowerCase();
-      if(/pin|zip|code|road|street|nagar|marg|sector|colony|block|suite|floor|apt/.test(before)&&digits.length===6)continue;
-      if(/pin|zip|code/.test(after)&&digits.length===6)continue;
-      push(raw,w);
-    }
-    if(!found.length)return '';
-    if(mobileLabelSeen){var mob=found.filter(function(f){return f.w>=10;})[0];if(mob)return mob.raw;}
-    found.sort(function(a,b){return b.w-a.w;});
-    return found[0].raw;
-  }
-  function extractDate(text){
-    var t=String(text||''),out=[],m;
-    function add(raw,w,idx){raw=raw.trim().replace(/[,;]+$/,'');if(!raw)return;out.push({raw:raw,w:w,idx:idx});}
-    var isoRe=/\b(\d{4}[-\/.]\d{1,2}[-\/.]\d{1,2})\b/g;
-    while((m=isoRe.exec(t)))add(m[1],4,m.index);
-    var dmyRe=new RegExp('\\b((?:mon|tue|tues|wed|thu|thur|thurs|fri|sat|sun)[a-z]*,?\\s+)?(\\d{1,2})(?:st|nd|rd|th)?\\s+(?:of\\s+)?('+MONTH_ALT+')\\.?,?\\s+(\\d{2,4})\\b','gi');
-    while((m=dmyRe.exec(t)))add(m[0],6,m.index);
-    var mdyRe=new RegExp('\\b('+MONTH_ALT+')\\.?\\s+(\\d{1,2})(?:st|nd|rd|th)?,?\\s+(\\d{2,4})\\b','gi');
-    while((m=mdyRe.exec(t)))add(m[0],6,m.index);
-    var numRe=/\b(\d{1,2}\s*[\/\-.]\s*\d{1,2}\s*[\/\-.]\s*\d{2,4})\b/g;
-    while((m=numRe.exec(t)))add(m[1],4,m.index);
-    if(!out.length)return '';
-    out.forEach(function(d){var before=t.slice(Math.max(0,d.idx-45),d.idx).toLowerCase();if(/\b(date|on|dated|rsvp|when|by|schedule|ceremony|at)\b\s*[:\-]?$|\b(date|rsvp)\s*[:\-]\s*$/.test(before))d.w+=2;if(/\bon\b|\bdate\b|\brsvp\b/.test(before))d.w+=1;});
-    out.sort(function(a,b){return b.w-a.w||a.idx-b.idx;});
-    return out[0].raw;
-  }
-  function looksLikeName(line){
-    if(!line||/\d/.test(line))return false;
-    if(line.indexOf('@')!==-1)return false;
-    if(LABEL_LINE_RE.test(line))return false;
-    var words=line.split(/\s+/).filter(Boolean);
-    if(words.length<2||words.length>4)return false;
-    if(hasWord(line,DESIGNATION_WORDS))return false;
-    if(hasWord(line,COMPANY_WORDS))return false;
-    if(/[|]/.test(line))return false;
-    var ok=words.every(function(w){w=w.replace(/[^A-Za-z.'\-]/g,'');if(!w)return false;if(/^[A-Z]\.?$/.test(w))return true;return /^[A-Z][a-z'’.\-]*$/.test(w)||/^[A-Z]{2,}$/.test(w);});
-    return ok;
-  }
-  function extractName(text){
-    var t=String(text||''),lines=splitLines(t),m;
-    m=t.match(/\bname\s*[:\-–]\s*([^\n]+)/i);
-    if(m){var v=cleanLine(m[1]);if(v&&v.length<60&&!/\d/.test(v))return v;}
-    m=t.match(/\bdear\s+((?:mr|mrs|ms|miss|dr|prof|er|adv|shri|smt)\.?\s+)?([A-Z][A-Za-z.'’\-]+(?:\s+[A-Z][A-Za-z.'’\-]+){0,3})/);
-    if(m)return cleanLine((m[1]||'')+m[2]);
-    for(var i=0;i<lines.length;i++){m=lines[i].match(/^((?:mr|mrs|ms|miss|dr|prof|er|adv|shri|smt|mr\.)\.?\s+.+)$/i);if(m){var cand=cleanLine(m[1]);if(cand&&!/\d/.test(cand))return cand;}}
-    var half=lines.slice(0,Math.max(6,Math.ceil(lines.length/2)));
-    for(var j=0;j<half.length;j++){if(looksLikeName(half[j]))return cleanLine(half[j]);}
-    return '';
-  }
-  function addressScore(line){
-    if(!line||line.length<6)return 0;var s=0,low=line.toLowerCase();
-    for(var i=0;i<ADDRESS_KEYWORDS.length;i++){if(low.indexOf(ADDRESS_KEYWORDS[i])!==-1){s+=2;break;}}
-    if(/\b\d{6}\b/.test(line)||/\b\d{5}(?:-\d{4})?\b/.test(line))s+=2;
-    if(/^\d/.test(line))s+=1;
-    if(/,\s*$/.test(line)||/,\s/.test(line))s+=1;
-    if(line.indexOf('@')!==-1)return 0;
-    if(/\b(?:tel|phone|mob|mobile|ph|whatsapp|www\.|http)\b/i.test(low))s-=3;
-    if(hasWord(line,COMPANY_WORDS)&&!/road|street|nagar|sector|floor|suite|plot|building|tower|office| complex|plaza|market|centre|center/.test(low))s-=2;
-    return s;
-  }
-  function extractAddress(text){
-    var t=String(text||''),lines=splitLines(t),m;
-    for(var i=0;i<lines.length;i++){
-      m=lines[i].match(/^\s*(?:address|addr|venue|registered office|office)\s*[:\-–]\s*(.*)$/i);
-      if(m){
-        var parts=[],first=cleanLine(m[1]);
-        if(first)parts.push(first);
-        for(var k=i+1;k<lines.length&&parts.length<4;k++){
-          var nxt=lines[k];if(!nxt)break;
-          if(LABEL_LINE_RE.test(nxt))break;
-          if(nxt.indexOf('@')!==-1)break;
-          if(/^\+?\d[\d\s\-().]{6,}$/.test(nxt))break;
-          if(addressScore(nxt)>0||/^[a-z0-9,&/..\-]/.test(nxt)||first.slice(-1)===','){parts.push(cleanLine(nxt));if(!/[,/]$/.test(nxt)&&addressScore(nxt)<2)break;}
-          else break;
+            lines.forEach((line, index) => {
+                const lower = line.toLowerCase();
+
+                // 1. Check Email
+                if (emailRegex.test(line)) {
+                    const match = line.match(emailRegex);
+                    if (match) email = match[0];
+                    return;
+                }
+
+                // 2. Check Mobile
+                if (mobileRegex.test(line) && !addressKeywords.some(k => lower.includes(k))) {
+                    const match = line.match(mobileRegex);
+                    if (match && !mobile) mobile = match[0];
+                    return;
+                }
+
+                // 3. Check Date
+                if (dateRegex.test(line)) {
+                    const match = line.match(dateRegex);
+                    if (match) date = match[0];
+                    return;
+                }
+
+                // 4. Check Company / Title
+                const hasCompanyKeyword = companyKeywords.some(kw => lower.includes(kw));
+                const hasTitleKeyword = titleKeywords.some(kw => lower.includes(kw));
+                if (hasCompanyKeyword || hasTitleKeyword) {
+                    companyParts.push(line);
+                    return;
+                }
+
+                // 5. Check Address
+                const hasAddressKeyword = addressKeywords.some(kw => lower.includes(kw)) || /\d{5,6}/.test(line);
+                if (hasAddressKeyword) {
+                    addressParts.push(line);
+                    return;
+                }
+
+                // 6. Default fallback for Name (usually first non-empty clean line if not categorized yet)
+                if (!name && index <= 2 && line.length < 35 && !/\d/.test(line)) {
+                    name = line;
+                } else {
+                    // Stays in company/designation or address depending on length/context
+                    if (line.length < 30 && companyParts.length === 0) {
+                        companyParts.push(line);
+                    } else {
+                        addressParts.push(line);
+                    }
+                }
+            });
+
+            document.getElementById('fieldName').value = name;
+            document.getElementById('fieldCompany').value = companyParts.join(', ');
+            document.getElementById('fieldAddress').value = addressParts.join(', ');
+            document.getElementById('fieldEmail').value = email;
+            document.getElementById('fieldMobile').value = mobile;
+            document.getElementById('fieldDate').value = date;
         }
-        var joined=parts.join(', ').replace(/,\s*,/g,',').trim();
-        if(joined)return joined;
-      }
-    }
-    var scores=lines.map(addressScore),best='',bestScore=0;
-    for(var a=0;a<lines.length;a++){
-      if(scores[a]<=0)continue;
-      var run=[cleanLine(lines[a])],runScore=scores[a];
-      for(var b=a+1;b<lines.length&&run.length<4;b++){if(scores[b]>0){run.push(cleanLine(lines[b]));runScore+=scores[b];}else break;}
-      if(runScore>bestScore){bestScore=runScore;best=run.join(', ');}
-      a=a+run.length-1;
-    }
-    if(best&&bestScore>=3)return best.replace(/,\s*,/g,',').trim();
-    return '';
-  }
-  function extractAll(text){var t=String(text||'');return{name:extractName(t),address:extractAddress(t),email:extractEmail(t),mobile:extractPhones(t),date:extractDate(t)};}
-  return{extractAll:extractAll};
-})();
 
-/* ---------- app ---------- */
-var FIELDS=[
-  {key:'name',    label:'Name',     icon:'👤', hint:'Person or addressee name'},
-  {key:'address', label:'Address',  icon:'📍', hint:'Street address, city, PIN/ZIP'},
-  {key:'email',   label:'Email',    icon:'✉️', hint:'Email address'},
-  {key:'mobile',  label:'Mobile',   icon:'📱', hint:'Phone / mobile number'},
-  {key:'date',    label:'Date',     icon:'📅', hint:'Event / appointment / RSVP date'}
-];
-var $=function(id){return document.getElementById(id);};
-var currentData=null, currentRaw='';
+        async function handleImageUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
 
-function toast(msg){var t=$('toast');t.textContent=msg;t.classList.add('show');clearTimeout(t._h);t._h=setTimeout(function(){t.classList.remove('show');},3200);}
+            const statusEl = document.getElementById('ocrStatus');
+            statusEl.classList.remove('hidden');
+            statusEl.innerText = "Recognizing text from image (Tesseract OCR)...";
 
-function showNotice(kind,msg){var n=$('imgNotice');n.className='notice '+kind;n.innerHTML=msg;}
-function hideNotice(){var n=$('imgNotice');n.className='notice';n.innerHTML='';}
+            try {
+                const { data: { text } } = await Tesseract.recognize(file, 'eng', {
+                    logger: m => {
+                        if (m.status === 'recognizing text') {
+                            statusEl.innerText = `OCR Progress: ${Math.round(m.progress * 100)}%`;
+                        }
+                    }
+                });
 
-function renderFields(data,raw){
-  currentData=data;currentRaw=raw||'';
-  var host=$('fields');host.innerHTML='';
-  var foundCount=0;
-  FIELDS.forEach(function(f){
-    var val=data[f.key]||'';
-    if(val)foundCount++;
-    var wrap=document.createElement('div');wrap.className='field';
-    var badge=val?'<span class="badge ok">found</span>':'<span class="badge miss">tap to add</span>';
-    wrap.innerHTML='<label><span class="ico">'+f.icon+'</span>'+f.label+' '+badge+'</label>'+
-      '<input type="text" id="f_'+f.key+'" value="'+val.replace(/"/g,'&quot;')+'" placeholder="'+f.hint+'" class="'+(val?'filled':'missing')+'">'+
-      '<div class="hint">'+f.hint+'</div>';
-    host.appendChild(wrap);
-    var inp=wrap.querySelector('input');
-    inp.addEventListener('input',function(){
-      currentData[f.key]=inp.value.trim();
-      inp.classList.toggle('filled',!!currentData[f.key]);
-      inp.classList.toggle('missing',!currentData[f.key]);
-      var b=wrap.querySelector('.badge');b.textContent=currentData[f.key]?'found':'tap to add';
-      b.className='badge '+(currentData[f.key]?'ok':'miss');
-      renderActions();
-    });
-  });
-  $('rawBox').textContent=raw||'(no text captured)';
-  $('resultCard').style.display='block';
-  renderActions();
-  if(foundCount===0){
-    // never silent: auto-open the raw text and explain
-    $('rawDetails').open=true;
-    showNotice('warn','⚠️ <strong>No fields could be detected.</strong> The photo is likely too small, blurry, or at an angle for the text reader (OCR). Check the raw text below to see what was actually read — then retake the photo with the card <strong>filling the whole frame</strong>, straight-on and well-lit, or copy the text manually into the paste box above.');
-  }else if(foundCount<3){
-    $('rawDetails').open=true;
-    showNotice('info','✅ '+foundCount+' field'+(foundCount>1?'s':'')+' found. Check the raw text below — anything misread can be fixed by tapping the fields.');
-  }else{
-    hideNotice();
-  }
-}
+                document.getElementById('rawTextInput').value = text;
+                processText();
+                statusEl.innerText = "Text extracted successfully!";
+                setTimeout(() => statusEl.classList.add('hidden'), 3000);
+            } catch (error) {
+                statusEl.innerText = "Error scanning image. Please try pasting text manually.";
+            }
+        }
 
-function fmtDate(d){var x=new Date(d);return isNaN(x)?d:x.toLocaleDateString(undefined,{day:'numeric',month:'short',year:'numeric'})+', '+x.toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'});}
+        function clearAll() {
+            document.getElementById('rawTextInput').value = '';
+            document.getElementById('fieldName').value = '';
+            document.getElementById('fieldCompany').value = '';
+            document.getElementById('fieldAddress').value = '';
+            document.getElementById('fieldEmail').value = '';
+            document.getElementById('fieldMobile').value = '';
+            document.getElementById('fieldDate').value = '';
+        }
 
-function collectValues(){
-  FIELDS.forEach(function(f){var el=$('f_'+f.key);if(el)currentData[f.key]=el.value.trim();});
-  return currentData;
-}
+        function copyAll() {
+            const summary = `Name: ${document.getElementById('fieldName').value}\nCompany/Role: ${document.getElementById('fieldCompany').value}\nAddress: ${document.getElementById('fieldAddress').value}\nEmail: ${document.getElementById('fieldEmail').value}\nMobile: ${document.getElementById('fieldMobile').value}\nDate: ${document.getElementById('fieldDate').value}`;
+            navigator.clipboard.writeText(summary);
+            alert('Copied to clipboard!');
+        }
 
-function plainText(d){
-  var skip=['Name','Address','Email','Mobile','Date'];
-  var lines=[];
-  if(d.name)lines.push('Name: '+d.name);
-  if(d.address)lines.push('Address: '+d.address);
-  if(d.email)lines.push('Email: '+d.email);
-  if(d.mobile)lines.push('Mobile: '+d.mobile);
-  if(d.date)lines.push('Date: '+d.date);
-  var extra=Object.keys(d).filter(function(k){return skip.indexOf(k)===-1&&d[k];}).map(function(k){return k+': '+d[k];});
-  return lines.concat(extra).join('\n')||'';
-}
+        function shareData() {
+            const summary = `Name: ${document.getElementById('fieldName').value}\nMobile: ${document.getElementById('fieldMobile').value}\nEmail: ${document.getElementById('fieldEmail').value}`;
+            if (navigator.share) {
+                navigator.share({ title: 'Extracted Card Details', text: summary });
+            } else {
+                copyAll();
+            }
+        }
 
-function vcard(d){
-  var lines=['BEGIN:VCARD','VERSION:3.0'];
-  if(d.name){lines.push('FN:'+d.name);lines.push('N:'+d.name.split(/\s+/).reverse().join(';')+';;;');}
-  if(d.company)lines.push('ORG:'+d.company);
-  if(d.designation)lines.push('TITLE:'+d.designation);
-  if(d.mobile){var tel=d.mobile.replace(/[^\d+]/g,'');lines.push('TEL;TYPE=CELL:'+tel);}
-  if(d.email)lines.push('EMAIL;TYPE=INTERNET:'+d.email);
-  if(d.address)lines.push('ADR;TYPE=WORK:;;'+d.address.replace(/\n/g,' ')+';;;;');
-  if(d.website)lines.push('URL:'+d.website);
-  lines.push('END:VCARD');
-  return lines.join('\r\n');
-}
+        function saveContact() {
+            const name = document.getElementById('fieldName').value || 'Contact';
+            const mobile = document.getElementById('fieldMobile').value;
+            const email = document.getElementById('fieldEmail').value;
+            const org = document.getElementById('fieldCompany').value;
+            const addr = document.getElementById('fieldAddress').value;
 
-function download(name,content,mime){
-  var a=document.createElement('a');
-  a.href=URL.createObjectURL(new Blob([content],{type:mime}));
-  a.download=name;a.click();setTimeout(function(){URL.revokeObjectURL(a.href);},1500);
-}
+            const vcard = `BEGIN:VCARD\nVERSION:3.0\nFN:${name}\nORG:${org}\nTEL:${mobile}\nEMAIL:${email}\nADR:;;${addr};;;;\nEND:VCARD`;
+            const blob = new Blob([vcard], { type: 'text/vcard' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${name.replace(/\s+/g, '_')}.vcf`;
+            a.click();
+        }
 
-function copy(text){
-  if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(text).then(function(){toast('Copied to clipboard ✓');},fallbackCopy);}
-  else fallbackCopy();
-  function fallbackCopy(){var ta=document.createElement('textarea');ta.value=text;document.body.appendChild(ta);ta.select();try{document.execCommand('copy');toast('Copied to clipboard ✓');}catch(e){toast('Copy failed — please copy manually');}document.body.removeChild(ta);}
-}
+        function saveHistory() {
+            const mobile = document.getElementById('fieldMobile').value || document.getElementById('fieldName').value || 'Card';
+            const historyData = JSON.parse(localStorage.getItem('cardHistory') || '[]');
+            historyData.unshift({
+                title: mobile,
+                date: new Date().toLocaleDateString(),
+                data: {
+                    name: document.getElementById('fieldName').value,
+                    company: document.getElementById('fieldCompany').value,
+                    address: document.getElementById('fieldAddress').value,
+                    email: document.getElementById('fieldEmail').value,
+                    mobile: document.getElementById('fieldMobile').value,
+                    date: document.getElementById('fieldDate').value
+                }
+            });
+            localStorage.setItem('cardHistory', JSON.stringify(historyData.slice(0, 10)));
+            loadHistory();
+            alert('Saved to local history!');
+        }
 
-function share(){
-  var d=collectValues(),text='📇 Card Details\n\n'+plainText(d);
-  if(navigator.share){navigator.share({title:'Card Details',text:text}).catch(function(){});}
-  else copy(text);
-}
+        function loadHistory() {
+            const historyList = document.getElementById('historyList');
+            const historyData = JSON.parse(localStorage.getItem('cardHistory') || '[]');
+            if (historyData.length === 0) {
+                historyList.innerHTML = `<p class="text-xs text-slate-400 italic">No saved cards yet.</p>`;
+                return;
+            }
+            historyList.innerHTML = historyData.map((item, idx) => `
+                <div class="flex justify-between items-center bg-slate-50 p-2 rounded border border-slate-200">
+                    <div>
+                        <span class="font-medium text-slate-800">${item.title}</span>
+                        <span class="text-xs text-slate-400 block">${item.date}</span>
+                    </div>
+                    <button onclick="restoreHistory(${idx})" class="text-xs bg-blue-50 text-blue-600 px-2 py-1 rounded hover:bg-blue-100">Load</button>
+                </div>
+            `).join('');
+        }
 
-function renderActions(){
-  var d=collectValues();
-  var hasAny=FIELDS.some(function(f){return d[f.key];});
-  var host=$('actions');host.innerHTML='';
-  if(!hasAny)return;
-  var b;
-  b=mk('btn primary','📤 Share','share');host.appendChild(b);
-  b=mk('btn ghost','📋 Copy all');b.onclick=function(){copy(plainText(d));};host.appendChild(b);
-  b=mk('btn ghost','🟢 WhatsApp');b.onclick=function(){window.open('https://wa.me/?text='+encodeURIComponent(plainText(d)),'_blank');};host.appendChild(b);
-  b=mk('btn ghost','✉️ Email');b.onclick=function(){var s='Card Details';if(d.name)s+=' – '+d.name;window.location.href='mailto:?subject='+encodeURIComponent(s)+'&body='+encodeURIComponent(plainText(d));};host.appendChild(b);
-  b=mk('btn ghost','👤 Save contact (.vcf)');b.onclick=function(){download((d.name||'contact').replace(/[^\w]+/g,'_')+'.vcf',vcard(d),'text/vcard');};host.appendChild(b);
-  b=mk('btn ghost','📄 Text file (.txt)');b.onclick=function(){download((d.name||'card')+'-details.txt',plainText(d),'text/plain');};host.appendChild(b);
-  saveHistory(d);
-}
-function mk(cls,txt,act){
-  var b=document.createElement('button');b.className=cls;b.textContent=txt;
-  if(act)b.onclick=share;return b;
-}
+        function restoreHistory(idx) {
+            const historyData = JSON.parse(localStorage.getItem('cardHistory') || '[]');
+            const item = historyData[idx];
+            if (item) {
+                document.getElementById('fieldName').value = item.data.name || '';
+                document.getElementById('fieldCompany').value = item.data.company || '';
+                document.getElementById('fieldAddress').value = item.data.address || '';
+                document.getElementById('fieldEmail').value = item.data.email || '';
+                document.getElementById('fieldMobile').value = item.data.mobile || '';
+                document.getElementById('fieldDate').value = item.data.date || '';
+            }
+        }
 
-/* ---------- history (localStorage) ---------- */
-function saveHistory(d){
-  var h=readHistory();
-  h.unshift({t:Date.now(),d:d});
-  h=h.slice(0,10);
-  try{localStorage.setItem('cardExtractHistory',JSON.stringify(h));}catch(e){}
-  renderHistory();
-}
-function readHistory(){try{return JSON.parse(localStorage.getItem('cardExtractHistory')||'[]');}catch(e){return [];}}
-function renderHistory(){
-  var h=readHistory(),host=$('historyList');
-  $('historyCard').style.display=h.length?'block':'none';
-  host.innerHTML='';
-  h.forEach(function(item){
-    var row=document.createElement('div');row.className='history-item';
-    var nm=item.d.name||item.d.mobile||item.d.email||'(no name)';
-    row.innerHTML='<div><div class="who">'+nm.replace(/</g,'&lt;')+'</div><div class="when">'+fmtDate(item.t)+'</div></div>';
-    var bb=document.createElement('button');bb.className='btn ghost small';bb.textContent='Load';
-    bb.onclick=function(){renderFields(Object.assign({},item.d),'');window.scrollTo({top:$('resultCard').offsetTop-20,behavior:'smooth'});};
-    row.appendChild(bb);host.appendChild(row);
-  });
-}
+        function clearHistory() {
+            localStorage.removeItem('cardHistory');
+            loadHistory();
+        }
 
-/* ---------- text path ---------- */
-$('btnText').onclick=function(){
-  var t=$('textInput').value.trim();
-  if(!t){toast('Paste some card text first');return;}
-  hideNotice();
-  renderFields(CardExtractor.extractAll(t),t);
-};
-$('btnClearText').onclick=function(){$('textInput').value='';};
-
-/* ---------- image path (OCR with preprocessing) ---------- */
-var drop=$('drop'),fileInput=$('fileInput');
-drop.onclick=function(){fileInput.click();};
-drop.ondragover=function(e){e.preventDefault();drop.classList.add('drag');};
-drop.ondragleave=function(){drop.classList.remove('drag');};
-drop.ondrop=function(e){e.preventDefault();drop.classList.remove('drag');if(e.dataTransfer.files[0])handleFile(e.dataTransfer.files[0]);};
-fileInput.onchange=function(){if(fileInput.files[0])handleFile(fileInput.files[0]);};
-
-function loadImage(src){
-  return new Promise(function(res,rej){
-    var img=new Image();
-    img.onload=function(){res(img);};
-    img.onerror=rej;
-    img.src=src;
-  });
-}
-
-/* Upscale + grayscale + contrast so small photos can be read.
-   Reproduced failure: a 264x362 card photo returns OCR noise —
-   scaling it to ~1600px min side before OCR is the fix. */
-function preprocess(img,binarize){
-  var minSide=Math.min(img.width,img.height);
-  var scale=Math.min(4,Math.max(1,1600/Math.max(1,minSide)));
-  var w=Math.round(img.width*scale),h=Math.round(img.height*scale);
-  var canvas=document.createElement('canvas');
-  canvas.width=w;canvas.height=h;
-  var ctx=canvas.getContext('2d');
-  ctx.imageSmoothingEnabled=true;
-  ctx.imageSmoothingQuality='high';
-  ctx.filter='grayscale(1) contrast('+(binarize?2.2:1.35)+') brightness(1.05)';
-  ctx.drawImage(img,0,0,w,h);
-  if(binarize){
-    var d=ctx.getImageData(0,0,w,h),px=d.data;
-    for(var i=0;i<px.length;i+=4){
-      var g=0.299*px[i]+0.587*px[i+1]+0.114*px[i+2];
-      var v=g>140?255:0;
-      px[i]=px[i+1]=px[i+2]=v;
-    }
-    ctx.putImageData(d,0,0);
-  }
-  return canvas;
-}
-
-function ocrQuality(text){
-  var words=String(text||'').split(/\s+/).filter(function(w){return /[A-Za-z0-9]{3,}/.test(w);});
-  var hasEmail=/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/.test(text);
-  var hasPhone=/\d{7,}/.test(String(text||'').replace(/[\s\-().]/g,''));
-  return {chars:String(text||'').length, words:words.length, hasEmail:hasEmail, hasPhone:hasPhone};
-}
-
-async function runOcr(worker,source,label){
-  $('progressText').textContent=label;
-  var res=await worker.recognize(source);
-  return res.data.text||'';
-}
-
-async function handleFile(file){
-  if(!/^image\//.test(file.type)){toast('Please choose an image file');return;}
-  hideNotice();
-  var url=URL.createObjectURL(file);
-  var pv=$('preview');pv.src=url;pv.style.display='block';
-  $('progressWrap').style.display='block';
-  $('progressFill').style.width='0%';
-  $('progressText').textContent='Preparing image…';
-  try{
-    var img=await loadImage(url);
-    var prepared=preprocess(img,false);
-    var worker=await Tesseract.createWorker('eng',1,{logger:function(m){
-      if(m.status==='recognizing text'){
-        $('progressFill').style.width=Math.round(m.progress*100)+'%';
-        $('progressText').textContent='Reading text… '+Math.round(m.progress*100)+'%';
-      }else{$('progressText').textContent=m.status;}
-    }});
-    var text=(await runOcr(worker,prepared,'Reading text…')).trim();
-    var q=ocrQuality(text);
-    // second pass with stronger binarization if the first read was weak
-    if(q.words<5||(!q.hasEmail&&!q.hasPhone)){
-      $('progressText').textContent='Retrying with enhanced contrast…';
-      var prepared2=preprocess(img,true);
-      var text2=(await worker.recognize(prepared2)).data.text.trim();
-      var q2=ocrQuality(text2);
-      if(q2.words>q.words){text=text2;q=q2;}
-    }
-    await worker.terminate();
-    $('progressWrap').style.display='none';
-    $('rawMeta').textContent='OCR read '+q.chars+' characters, '+q.words+' readable words'+(q.hasEmail?' · found email-like text':'')+(q.hasPhone?' · found number-like text':'')+'.';
-    if(!text||q.words<3){
-      $('resultCard').style.display='none';
-      showNotice('err','❌ <strong>The text reader could not read this photo ('+q.words+' readable words).</strong> The photo is probably too small or blurry. Retake it with the card <strong>filling the whole frame</strong>, straight-on, in good light — or paste the card text in box 1 above.');
-      toast('OCR failed: photo too small or blurry — retake it filling the frame');
-      return;
-    }
-    renderFields(CardExtractor.extractAll(text),text);
-  }catch(err){
-    $('progressWrap').style.display='none';
-    showNotice('err','❌ <strong>The text reader failed to run</strong> ('+(err&&err.message?String(err.message).slice(0,120):'unknown error')+'). On first use it needs internet to load the OCR engine — check your connection and try again. You can always paste the card text in box 1 instead.');
-    toast('OCR failed — check internet on first use, or paste text instead');
-  }
-}
-
-$('btnClearHist').onclick=function(){localStorage.removeItem('cardExtractHistory');renderHistory();toast('History cleared');};
-renderHistory();
-</script>
+        window.onload = loadHistory;
+    </script>
 </body>
 </html>
