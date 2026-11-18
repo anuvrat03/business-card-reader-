@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Business Card Extractor v4</title>
+    <title>Business Card Extractor v5</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 </head>
@@ -31,6 +31,8 @@
             <label class="block text-xs font-semibold uppercase tracking-wider text-blue-600">2. ...or upload a card photo</label>
             <input type="file" id="imageInput" accept="image/*" class="w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer" onchange="handleImageUpload(event)">
             <div id="ocrStatus" class="text-xs text-slate-500 italic hidden">Scanning image with OCR... Please wait.</div>
+            <!-- Hidden Canvas for Image Enhancement -->
+            <canvas id="imageCanvas" class="hidden"></canvas>
         </section>
 
         <!-- Step 3: Extracted Details -->
@@ -92,7 +94,7 @@
         </footer>
     </div>
 
-    <!-- JavaScript Parsing & Reset Logic -->
+    <!-- JavaScript Processing & Preprocessing Logic -->
     <script>
         function processText() {
             const rawText = document.getElementById('rawTextInput').value;
@@ -178,24 +180,49 @@
 
             const statusEl = document.getElementById('ocrStatus');
             statusEl.classList.remove('hidden');
-            statusEl.innerText = "Recognizing text from image (Tesseract OCR)...";
+            statusEl.innerText = "Preprocessing image & removing background...";
 
-            try {
-                const { data: { text } } = await Tesseract.recognize(file, 'eng', {
-                    logger: m => {
-                        if (m.status === 'recognizing text') {
-                            statusEl.innerText = `OCR Progress: ${Math.round(m.progress * 100)}%`;
+            // Preprocess image to grayscale and increase contrast to eliminate table background noise
+            const img = new Image();
+            img.src = URL.createObjectURL(file);
+            img.onload = async function() {
+                const canvas = document.getElementById('imageCanvas');
+                const ctx = canvas.getContext('2d');
+                canvas.width = img.width;
+                canvas.height = img.height;
+                ctx.drawImage(img, 0, 0);
+
+                const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                const data = imgData.data;
+                for (let i = 0; i < data.length; i += 4) {
+                    // Grayscale conversion
+                    let avg = (data[i] + data[i + 1] + data[i + 2]) / 3;
+                    // High contrast filter to make text pop and background white
+                    let contrast = avg > 140 ? 255 : 0; 
+                    data[i] = contrast;
+                    data[i + 1] = contrast;
+                    data[i + 2] = contrast;
+                }
+                ctx.putImageData(imgData, 0, 0);
+
+                statusEl.innerText = "Recognizing text with Tesseract OCR...";
+                try {
+                    const { data: { text } } = await Tesseract.recognize(canvas, 'eng', {
+                        logger: m => {
+                            if (m.status === 'recognizing text') {
+                                statusEl.innerText = `OCR Progress: ${Math.round(m.progress * 100)}%`;
+                            }
                         }
-                    }
-                });
+                    });
 
-                document.getElementById('rawTextInput').value = text;
-                processText();
-                statusEl.innerText = "Text extracted successfully!";
-                setTimeout(() => statusEl.classList.add('hidden'), 3000);
-            } catch (error) {
-                statusEl.innerText = "Error scanning image. Please try pasting text manually.";
-            }
+                    document.getElementById('rawTextInput').value = text;
+                    processText();
+                    statusEl.innerText = "Text extracted successfully!";
+                    setTimeout(() => statusEl.classList.add('hidden'), 3000);
+                } catch (error) {
+                    statusEl.innerText = "Error scanning image. Please try pasting text manually.";
+                }
+            };
         }
 
         function clearAll() {
