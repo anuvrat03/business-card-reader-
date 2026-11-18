@@ -24,7 +24,7 @@
 
 <div class="container">
     <h2>AI Card Extractor</h2>
-    <div class="subtitle">Powered by Free Google AI Studio (Gemini)</div>
+    <div class="subtitle">Powered by Google AI (Gemini)</div>
 
     <!-- 1. SNAP OR UPLOAD -->
     <div class="card-box">
@@ -65,8 +65,8 @@
 </div>
 
 <script>
-    // Embedded API Key
-    const API_KEY = "AQ.Ab8RN6J3ROBQV263iD3OZo4yNGqHg8uU49xChTnVjr1quz67Ag";
+    // Your provided AQ token embedded here properly as a Bearer token
+    const OAUTH_TOKEN = "AQ.Ab8RN6J3ROBQV263iD3OZo4yNGqHg8uU49xChTnVjr1quz67Ag";
 
     document.getElementById('imageInput').addEventListener('change', async function(event) {
         const file = event.target.files[0];
@@ -82,13 +82,17 @@
             const base64Data = await convertFileToBase64(file);
             const mimeType = file.type || 'image/jpeg';
 
-            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${encodeURIComponent(API_KEY)}`;
+            // Using OAuth Bearer Authorization header since your token starts with AQ
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent`;
 
             const promptText = `Extract contact details from this business card image. Return ONLY valid JSON with these exact keys: "name", "company", "role", "address", "email", "mobile". Leave a field as an empty string "" if not present on the card.`;
 
             const response = await fetch(url, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${OAUTH_TOKEN}`
+                },
                 body: JSON.stringify({
                     contents: [{
                         parts: [
