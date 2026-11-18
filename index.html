@@ -9,7 +9,8 @@
   :root{
     --bg:#f4f6fb; --card:#ffffff; --ink:#1e2433; --muted:#6b7385;
     --accent:#4353ff; --accent-soft:#eef0ff; --ok:#0a8a4a; --ok-soft:#e6f6ee;
-    --warn:#b45309; --warn-soft:#fef3e2; --line:#e3e7f0; --radius:14px;
+    --warn:#b45309; --warn-soft:#fef3e2; --err:#b91c1c; --err-soft:#fee2e2;
+    --line:#e3e7f0; --radius:14px;
   }
   *{box-sizing:border-box;margin:0;padding:0}
   body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--ink);min-height:100vh}
@@ -38,6 +39,10 @@
   #progressBar{height:8px;background:var(--accent-soft);border-radius:6px;overflow:hidden}
   #progressFill{height:100%;width:0;background:var(--accent);transition:width .3s}
   #progressText{font-size:.82rem;color:var(--muted);margin-top:6px}
+  .notice{display:none;margin-top:12px;padding:11px 13px;border-radius:10px;font-size:.86rem;line-height:1.5}
+  .notice.warn{display:block;background:var(--warn-soft);color:var(--warn);border:1px solid #f3d9a4}
+  .notice.err{display:block;background:var(--err-soft);color:var(--err);border:1px solid #f5c2c2}
+  .notice.info{display:block;background:var(--ok-soft);color:var(--ok);border:1px solid #bfe8d0}
   .field{margin-bottom:14px}
   .field label{display:flex;align-items:center;gap:8px;font-weight:600;font-size:.86rem;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);margin-bottom:6px}
   .field label .ico{font-size:1rem}
@@ -49,15 +54,15 @@
   .badge{font-size:.72rem;padding:2px 8px;border-radius:20px;font-weight:600}
   .badge.ok{background:var(--ok-soft);color:var(--ok)}
   .badge.miss{background:var(--warn-soft);color:var(--warn)}
-  .rawbox{background:#f6f8fd;border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-size:.8rem;color:var(--muted);white-space:pre-wrap;max-height:140px;overflow:auto}
+  .rawbox{background:#f6f8fd;border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-size:.8rem;color:var(--muted);white-space:pre-wrap;max-height:180px;overflow:auto}
+  .rawmeta{font-size:.75rem;color:var(--muted);margin-top:6px}
   #actions{display:flex;gap:10px;flex-wrap:wrap}
-  #empty{text-align:center;color:var(--muted);padding:8px 0}
   .history-item{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line);font-size:.9rem}
   .history-item:last-child{border:none}
   .history-item .who{font-weight:600}
   .history-item .when{color:var(--muted);font-size:.78rem}
   footer{text-align:center;color:var(--muted);font-size:.78rem;margin-top:26px;line-height:1.6}
-  #toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;padding:11px 20px;border-radius:10px;font-size:.88rem;opacity:0;pointer-events:none;transition:.3s;z-index:9}
+  #toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;padding:11px 20px;border-radius:10px;font-size:.88rem;opacity:0;pointer-events:none;transition:.3s;z-index:9;max-width:90%;text-align:center}
   #toast.show{opacity:1}
   @media(max-width:560px){header h1{font-size:1.35rem}}
 </style>
@@ -80,10 +85,12 @@
     <div class="drop" id="drop">
       <div style="font-size:1.8rem;margin-bottom:6px">🖼️</div>
       <strong>Click to choose an image</strong> or drag &amp; drop it here<br>
-      <span style="font-size:.8rem">JPG / PNG / WebP — text is read on your device (OCR)</span>
+      <span style="font-size:.8rem">JPG / PNG / WebP — text is read on your device (OCR)<br>
+      📸 Best results: <strong>fill the whole frame with the card</strong>, sharp and well-lit</span>
     </div>
     <input type="file" id="fileInput" accept="image/*" hidden>
     <img id="preview" alt="Card preview">
+    <div class="notice" id="imgNotice"></div>
     <div id="progressWrap"><div id="progressBar"><div id="progressFill"></div></div><div id="progressText"></div></div>
   </div>
 
@@ -91,7 +98,11 @@
     <h2><span class="n">3</span> Extracted details <span style="font-weight:400;color:var(--muted);font-size:.8rem">— editable, click any field to fix</span></h2>
     <div id="fields"></div>
     <div id="actions"></div>
-    <details style="margin-top:14px"><summary style="cursor:pointer;font-size:.82rem;color:var(--muted)">Show raw text used</summary><div class="rawbox" id="rawBox" style="margin-top:8px"></div></details>
+    <details style="margin-top:14px" id="rawDetails">
+      <summary style="cursor:pointer;font-size:.82rem;color:var(--muted)">Show raw text used</summary>
+      <div class="rawbox" id="rawBox" style="margin-top:8px"></div>
+      <div class="rawmeta" id="rawMeta"></div>
+    </details>
   </div>
 
   <div class="card" id="historyCard" style="display:none">
@@ -112,7 +123,7 @@
 const CardExtractor = (function(){
   var MONTH_ALT='Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t)?(?:ember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?';
   var DESIGNATION_WORDS=['manager','director','ceo','cto','cfo','coo','founder','co-founder','owner','president','vp','sales','marketing','engineer','developer','consultant','executive','officer','accountant','architect','designer','doctor','lawyer','advocate','professor','teacher','head','lead','chief','admin','coordinator','specialist','analyst','associate','assistant','trainee','intern','representative','agent','proprietor','partner','chairman','secretary','treasurer','principal','dean','coach','chef','photographer','editor','writer','author','student'];
-  var COMPANY_WORDS=['pvt','private','ltd','limited','llp','inc','incorporated','llc','corp','corporation','co','company','technologies','technology','tech','solutions','services','enterprises','enterprise','industries','group','associates','associates','partners','systems','consulting','consultancy','labs','lab','studio','global','globals','international','traders','agency','agencies','hospital','clinic','hotel','resort','restaurant','cafe','academy','school','institute','college','university','foundation','trust','society','bank','insurance','realty','real-estate','infrastructure','constructions','builders','developers','motors','automobiles','automotives','electronics','exports','imports','textiles','garments','pharma','pharmaceuticals','healthcare','wellness','spa','salon','photography','films','media','events','eventz','caterers','catering','decorators','travels','logistics','transport','shipping','store','stores','mart','bazaar','boutique','diamond','jewellers','jewelry','dental','diagnostic','pharmacy','hardware','software','web','digital','it','bpo','kpo'];
+  var COMPANY_WORDS=['pvt','private','ltd','limited','llp','inc','incorporated','llc','corp','corporation','co','company','technologies','technology','tech','solutions','services','enterprises','enterprise','industries','group','associates','partners','systems','consulting','consultancy','labs','lab','studio','global','globals','international','traders','agency','agencies','hospital','clinic','hotel','resort','restaurant','cafe','academy','school','institute','college','university','foundation','trust','society','bank','insurance','realty','real-estate','infrastructure','constructions','builders','developers','motors','automobiles','automotives','electronics','exports','imports','textiles','garments','pharma','pharmaceuticals','healthcare','wellness','spa','salon','photography','films','media','events','eventz','caterers','catering','decorators','travels','logistics','transport','shipping','store','stores','mart','bazaar','boutique','diamond','jewellers','jewelry','dental','diagnostic','pharmacy','hardware','software','web','digital','it','bpo','kpo'];
   var ADDRESS_KEYWORDS=['street','st.','st,','road','rd.','rd,','avenue','ave.','ave,','boulevard','blvd','lane','ln.','drive','court','ct.','suite','apt','apartment','flat','floor','plot','house','building','tower','nagar','marg','colony','vihar','enclave','layout','sector','block','phase','extension','crossing','chowk','chowraha','opp.','opposite','near','behind','beside','next to','landmark','pincode','pin code','zip','postal','highway','hwy','circle','cross','main road','branch','office no','door no','door no.','d.no','gali','ward','mohalla','gated','complex','plaza','centre','center','mall','market','bazar','ganj','pur','puram','abadi','colony'];
   var LABEL_LINE_RE=/^\s*(name|address|addr|email|e-mail|mail|mobile|mob|phone|tel|telephone|contact|date|dob|rsvp|designation|company|organisation|organization|website|web|url|fax|age|time|venue|r\.s\.v\.p)\s*[:\-–]\s*/i;
   function cleanLine(s){return s.replace(/^[\s,\-–—:*#>•]+|[\s,;]+$/g,'').trim();}
@@ -235,7 +246,10 @@ var FIELDS=[
 var $=function(id){return document.getElementById(id);};
 var currentData=null, currentRaw='';
 
-function toast(msg){var t=$('toast');t.textContent=msg;t.classList.add('show');clearTimeout(t._h);t._h=setTimeout(function(){t.classList.remove('show');},2200);}
+function toast(msg){var t=$('toast');t.textContent=msg;t.classList.add('show');clearTimeout(t._h);t._h=setTimeout(function(){t.classList.remove('show');},3200);}
+
+function showNotice(kind,msg){var n=$('imgNotice');n.className='notice '+kind;n.innerHTML=msg;}
+function hideNotice(){var n=$('imgNotice');n.className='notice';n.innerHTML='';}
 
 function renderFields(data,raw){
   currentData=data;currentRaw=raw||'';
@@ -260,10 +274,19 @@ function renderFields(data,raw){
       renderActions();
     });
   });
-  $('rawBox').textContent=raw||'';
+  $('rawBox').textContent=raw||'(no text captured)';
   $('resultCard').style.display='block';
   renderActions();
-  if(foundCount===0)toast('No fields detected — tap a field to type it in');
+  if(foundCount===0){
+    // never silent: auto-open the raw text and explain
+    $('rawDetails').open=true;
+    showNotice('warn','⚠️ <strong>No fields could be detected.</strong> The photo is likely too small, blurry, or at an angle for the text reader (OCR). Check the raw text below to see what was actually read — then retake the photo with the card <strong>filling the whole frame</strong>, straight-on and well-lit, or copy the text manually into the paste box above.');
+  }else if(foundCount<3){
+    $('rawDetails').open=true;
+    showNotice('info','✅ '+foundCount+' field'+(foundCount>1?'s':'')+' found. Check the raw text below — anything misread can be fixed by tapping the fields.');
+  }else{
+    hideNotice();
+  }
 }
 
 function fmtDate(d){var x=new Date(d);return isNaN(x)?d:x.toLocaleDateString(undefined,{day:'numeric',month:'short',year:'numeric'})+', '+x.toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'});}
@@ -362,11 +385,12 @@ function renderHistory(){
 $('btnText').onclick=function(){
   var t=$('textInput').value.trim();
   if(!t){toast('Paste some card text first');return;}
+  hideNotice();
   renderFields(CardExtractor.extractAll(t),t);
 };
 $('btnClearText').onclick=function(){$('textInput').value='';};
 
-/* ---------- image path (OCR) ---------- */
+/* ---------- image path (OCR with preprocessing) ---------- */
 var drop=$('drop'),fileInput=$('fileInput');
 drop.onclick=function(){fileInput.click();};
 drop.ondragover=function(e){e.preventDefault();drop.classList.add('drag');};
@@ -374,29 +398,95 @@ drop.ondragleave=function(){drop.classList.remove('drag');};
 drop.ondrop=function(e){e.preventDefault();drop.classList.remove('drag');if(e.dataTransfer.files[0])handleFile(e.dataTransfer.files[0]);};
 fileInput.onchange=function(){if(fileInput.files[0])handleFile(fileInput.files[0]);};
 
+function loadImage(src){
+  return new Promise(function(res,rej){
+    var img=new Image();
+    img.onload=function(){res(img);};
+    img.onerror=rej;
+    img.src=src;
+  });
+}
+
+/* Upscale + grayscale + contrast so small photos can be read.
+   Reproduced failure: a 264x362 card photo returns OCR noise —
+   scaling it to ~1600px min side before OCR is the fix. */
+function preprocess(img,binarize){
+  var minSide=Math.min(img.width,img.height);
+  var scale=Math.min(4,Math.max(1,1600/Math.max(1,minSide)));
+  var w=Math.round(img.width*scale),h=Math.round(img.height*scale);
+  var canvas=document.createElement('canvas');
+  canvas.width=w;canvas.height=h;
+  var ctx=canvas.getContext('2d');
+  ctx.imageSmoothingEnabled=true;
+  ctx.imageSmoothingQuality='high';
+  ctx.filter='grayscale(1) contrast('+(binarize?2.2:1.35)+') brightness(1.05)';
+  ctx.drawImage(img,0,0,w,h);
+  if(binarize){
+    var d=ctx.getImageData(0,0,w,h),px=d.data;
+    for(var i=0;i<px.length;i+=4){
+      var g=0.299*px[i]+0.587*px[i+1]+0.114*px[i+2];
+      var v=g>140?255:0;
+      px[i]=px[i+1]=px[i+2]=v;
+    }
+    ctx.putImageData(d,0,0);
+  }
+  return canvas;
+}
+
+function ocrQuality(text){
+  var words=String(text||'').split(/\s+/).filter(function(w){return /[A-Za-z0-9]{3,}/.test(w);});
+  var hasEmail=/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/.test(text);
+  var hasPhone=/\d{7,}/.test(String(text||'').replace(/[\s\-().]/g,''));
+  return {chars:String(text||'').length, words:words.length, hasEmail:hasEmail, hasPhone:hasPhone};
+}
+
+async function runOcr(worker,source,label){
+  $('progressText').textContent=label;
+  var res=await worker.recognize(source);
+  return res.data.text||'';
+}
+
 async function handleFile(file){
   if(!/^image\//.test(file.type)){toast('Please choose an image file');return;}
+  hideNotice();
   var url=URL.createObjectURL(file);
   var pv=$('preview');pv.src=url;pv.style.display='block';
   $('progressWrap').style.display='block';
   $('progressFill').style.width='0%';
-  $('progressText').textContent='Loading OCR engine…';
+  $('progressText').textContent='Preparing image…';
   try{
+    var img=await loadImage(url);
+    var prepared=preprocess(img,false);
     var worker=await Tesseract.createWorker('eng',1,{logger:function(m){
       if(m.status==='recognizing text'){
         $('progressFill').style.width=Math.round(m.progress*100)+'%';
         $('progressText').textContent='Reading text… '+Math.round(m.progress*100)+'%';
       }else{$('progressText').textContent=m.status;}
     }});
-    var res=await worker.recognize(url);
+    var text=(await runOcr(worker,prepared,'Reading text…')).trim();
+    var q=ocrQuality(text);
+    // second pass with stronger binarization if the first read was weak
+    if(q.words<5||(!q.hasEmail&&!q.hasPhone)){
+      $('progressText').textContent='Retrying with enhanced contrast…';
+      var prepared2=preprocess(img,true);
+      var text2=(await worker.recognize(prepared2)).data.text.trim();
+      var q2=ocrQuality(text2);
+      if(q2.words>q.words){text=text2;q=q2;}
+    }
     await worker.terminate();
-    var text=res.data.text.trim();
     $('progressWrap').style.display='none';
-    if(!text){toast('No readable text found — try a sharper photo');return;}
+    $('rawMeta').textContent='OCR read '+q.chars+' characters, '+q.words+' readable words'+(q.hasEmail?' · found email-like text':'')+(q.hasPhone?' · found number-like text':'')+'.';
+    if(!text||q.words<3){
+      $('resultCard').style.display='none';
+      showNotice('err','❌ <strong>The text reader could not read this photo ('+q.words+' readable words).</strong> The photo is probably too small or blurry. Retake it with the card <strong>filling the whole frame</strong>, straight-on, in good light — or paste the card text in box 1 above.');
+      toast('OCR failed: photo too small or blurry — retake it filling the frame');
+      return;
+    }
     renderFields(CardExtractor.extractAll(text),text);
   }catch(err){
     $('progressWrap').style.display='none';
-    toast('OCR failed — check internet (first load) or try another image');
+    showNotice('err','❌ <strong>The text reader failed to run</strong> ('+(err&&err.message?String(err.message).slice(0,120):'unknown error')+'). On first use it needs internet to load the OCR engine — check your connection and try again. You can always paste the card text in box 1 instead.');
+    toast('OCR failed — check internet on first use, or paste text instead');
   }
 }
 
