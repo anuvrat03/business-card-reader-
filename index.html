@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Card Details Extractor</title>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+<style>
+  :root{
+    --bg:#f4f6fb; --card:#ffffff; --ink:#1e2433; --muted:#6b7385;
+    --accent:#4353ff; --accent-soft:#eef0ff; --ok:#0a8a4a; --ok-soft:#e6f6ee;
+    --warn:#b45309; --warn-soft:#fef3e2; --line:#e3e7f0; --radius:14px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--ink);min-height:100vh}
+  .wrap{max-width:860px;margin:0 auto;padding:24px 16px 60px}
+  header{text-align:center;margin-bottom:22px}
+  header h1{font-size:1.7rem;font-weight:700}
+  header p{color:var(--muted);margin-top:6px;font-size:.95rem}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:20px;margin-bottom:18px;box-shadow:0 1px 3px rgba(20,30,60,.05)}
+  .card h2{font-size:1.02rem;margin-bottom:14px;display:flex;align-items:center;gap:8px}
+  .card h2 .n{background:var(--accent);color:#fff;width:22px;height:22px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:.78rem;flex:none}
+  textarea{width:100%;min-height:150px;border:1px solid var(--line);border-radius:10px;padding:12px;font:inherit;font-size:.95rem;resize:vertical;background:#fbfcfe}
+  textarea:focus{outline:2px solid var(--accent-soft);border-color:var(--accent)}
+  .drop{border:2px dashed #c4cbe0;border-radius:12px;padding:26px 14px;text-align:center;color:var(--muted);cursor:pointer;transition:.2s;background:#fbfcfe}
+  .drop.drag{border-color:var(--accent);background:var(--accent-soft)}
+  .drop strong{color:var(--ink)}
+  .btn{display:inline-flex;align-items:center;gap:7px;border:none;border-radius:9px;padding:10px 16px;font:inherit;font-size:.9rem;font-weight:600;cursor:pointer;transition:.15s}
+  .btn:disabled{opacity:.5;cursor:not-allowed}
+  .btn.primary{background:var(--accent);color:#fff}
+  .btn.primary:hover:not(:disabled){background:#3240e0}
+  .btn.ghost{background:var(--accent-soft);color:var(--accent)}
+  .btn.ghost:hover:not(:disabled){background:#dfe3ff}
+  .btn.small{padding:7px 12px;font-size:.82rem}
+  .row{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
+  #preview{max-width:100%;max-height:260px;border-radius:10px;border:1px solid var(--line);display:none;margin-top:12px}
+  #progressWrap{display:none;margin-top:12px}
+  #progressBar{height:8px;background:var(--accent-soft);border-radius:6px;overflow:hidden}
+  #progressFill{height:100%;width:0;background:var(--accent);transition:width .3s}
+  #progressText{font-size:.82rem;color:var(--muted);margin-top:6px}
+  .field{margin-bottom:14px}
+  .field label{display:flex;align-items:center;gap:8px;font-weight:600;font-size:.86rem;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);margin-bottom:6px}
+  .field label .ico{font-size:1rem}
+  .field input{width:100%;border:1px solid var(--line);border-radius:9px;padding:11px 12px;font:inherit;font-size:.95rem;background:#fbfcfe}
+  .field input:focus{outline:2px solid var(--accent-soft);border-color:var(--accent)}
+  .field input.filled{border-left:3px solid var(--ok);background:var(--ok-soft)}
+  .field input.missing{border-left:3px solid #e2a400}
+  .hint{font-size:.78rem;color:var(--muted);margin-top:4px}
+  .badge{font-size:.72rem;padding:2px 8px;border-radius:20px;font-weight:600}
+  .badge.ok{background:var(--ok-soft);color:var(--ok)}
+  .badge.miss{background:var(--warn-soft);color:var(--warn)}
+  .rawbox{background:#f6f8fd;border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-size:.8rem;color:var(--muted);white-space:pre-wrap;max-height:140px;overflow:auto}
+  #actions{display:flex;gap:10px;flex-wrap:wrap}
+  #empty{text-align:center;color:var(--muted);padding:8px 0}
+  .history-item{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line);font-size:.9rem}
+  .history-item:last-child{border:none}
+  .history-item .who{font-weight:600}
+  .history-item .when{color:var(--muted);font-size:.78rem}
+  footer{text-align:center;color:var(--muted);font-size:.78rem;margin-top:26px;line-height:1.6}
+  #toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;padding:11px 20px;border-radius:10px;font-size:.88rem;opacity:0;pointer-events:none;transition:.3s;z-index:9}
+  #toast.show{opacity:1}
+  @media(max-width:560px){header h1{font-size:1.35rem}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>📇 Card Details Extractor</h1>
+    <p>Paste text from a business or invitation card — or upload a photo — and get Name, Address, Email, Mobile &amp; Date neatly organised and ready to share.</p>
+  </header>
+
+  <div class="card">
+    <h2><span class="n">1</span> Paste card text</h2>
+    <textarea id="textInput" placeholder="Paste the card text here…&#10;&#10;e.g.&#10;Rahul Sharma&#10;Sales Manager, Sharma Technologies Pvt Ltd&#10;12 MG Road, Bengaluru 560001&#10;+91 98765 43210 · rahul@sharmatech.com"></textarea>
+    <div class="row"><button class="btn primary" id="btnText">⚡ Extract fields</button><button class="btn ghost small" id="btnClearText">Clear</button></div>
+  </div>
+
+  <div class="card">
+    <h2><span class="n">2</span> …or upload a card photo</h2>
+    <div class="drop" id="drop">
+      <div style="font-size:1.8rem;margin-bottom:6px">🖼️</div>
+      <strong>Click to choose an image</strong> or drag &amp; drop it here<br>
+      <span style="font-size:.8rem">JPG / PNG / WebP — text is read on your device (OCR)</span>
+    </div>
+    <input type="file" id="fileInput" accept="image/*" hidden>
+    <img id="preview" alt="Card preview">
+    <div id="progressWrap"><div id="progressBar"><div id="progressFill"></div></div><div id="progressText"></div></div>
+  </div>
+
+  <div class="card" id="resultCard" style="display:none">
+    <h2><span class="n">3</span> Extracted details <span style="font-weight:400;color:var(--muted);font-size:.8rem">— editable, click any field to fix</span></h2>
+    <div id="fields"></div>
+    <div id="actions"></div>
+    <details style="margin-top:14px"><summary style="cursor:pointer;font-size:.82rem;color:var(--muted)">Show raw text used</summary><div class="rawbox" id="rawBox" style="margin-top:8px"></div></details>
+  </div>
+
+  <div class="card" id="historyCard" style="display:none">
+    <h2><span class="n">🕘</span> Saved on this device</h2>
+    <div id="historyList"></div>
+    <div class="row"><button class="btn ghost small" id="btnClearHist">Clear history</button></div>
+  </div>
+
+  <footer>
+    Everything runs locally in your browser — no data leaves your device.<br>
+    Image text recognition (OCR) needs internet on first use to load the engine. Accuracy is best with sharp, well-lit photos.
+  </footer>
+</div>
+<div id="toast"></div>
+
+<script>
+/* ---------- extraction engine (embedded, tested) ---------- */
+const CardExtractor = (function(){
+  var MONTH_ALT='Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t)?(?:ember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?';
+  var DESIGNATION_WORDS=['manager','director','ceo','cto','cfo','coo','founder','co-founder','owner','president','vp','sales','marketing','engineer','developer','consultant','executive','officer','accountant','architect','designer','doctor','lawyer','advocate','professor','teacher','head','lead','chief','admin','coordinator','specialist','analyst','associate','assistant','trainee','intern','representative','agent','proprietor','partner','chairman','secretary','treasurer','principal','dean','coach','chef','photographer','editor','writer','author','student'];
+  var COMPANY_WORDS=['pvt','private','ltd','limited','llp','inc','incorporated','llc','corp','corporation','co','company','technologies','technology','tech','solutions','services','enterprises','enterprise','industries','group','associates','associates','partners','systems','consulting','consultancy','labs','lab','studio','global','globals','international','traders','agency','agencies','hospital','clinic','hotel','resort','restaurant','cafe','academy','school','institute','college','university','foundation','trust','society','bank','insurance','realty','real-estate','infrastructure','constructions','builders','developers','motors','automobiles','automotives','electronics','exports','imports','textiles','garments','pharma','pharmaceuticals','healthcare','wellness','spa','salon','photography','films','media','events','eventz','caterers','catering','decorators','travels','logistics','transport','shipping','store','stores','mart','bazaar','boutique','diamond','jewellers','jewelry','dental','diagnostic','pharmacy','hardware','software','web','digital','it','bpo','kpo'];
+  var ADDRESS_KEYWORDS=['street','st.','st,','road','rd.','rd,','avenue','ave.','ave,','boulevard','blvd','lane','ln.','drive','court','ct.','suite','apt','apartment','flat','floor','plot','house','building','tower','nagar','marg','colony','vihar','enclave','layout','sector','block','phase','extension','crossing','chowk','chowraha','opp.','opposite','near','behind','beside','next to','landmark','pincode','pin code','zip','postal','highway','hwy','circle','cross','main road','branch','office no','door no','door no.','d.no','gali','ward','mohalla','gated','complex','plaza','centre','center','mall','market','bazar','ganj','pur','puram','abadi','colony'];
+  var LABEL_LINE_RE=/^\s*(name|address|addr|email|e-mail|mail|mobile|mob|phone|tel|telephone|contact|date|dob|rsvp|designation|company|organisation|organization|website|web|url|fax|age|time|venue|r\.s\.v\.p)\s*[:\-–]\s*/i;
+  function cleanLine(s){return s.replace(/^[\s,\-–—:*#>•]+|[\s,;]+$/g,'').trim();}
+  function splitLines(text){return String(text||'').split(/\r?\n/).map(function(l){return l.trim();});}
+  function hasWord(line,list){var words=line.toLowerCase().replace(/[()]/g,' ').split(/[^a-z]+/);return words.some(function(w){return list.indexOf(w)!==-1;});}
+  function extractEmail(text){var m=String(text||'').match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g);if(!m)return '';for(var i=0;i<m.length;i++){if(!/^[0-9.\-_@]+$/.test(m[i]))return m[i];}return m[0]||'';}
+  function isDateShaped(raw){var s=raw.trim();if(/^\d{1,2}\s*[\/\-.]\s*\d{1,2}\s*[\/\-.]\s*\d{2,4}$/.test(s))return true;if(/^\d{4}\s*[\/\-.]\s*\d{1,2}\s*[\/\-.]\s*\d{1,2}$/.test(s))return true;return false;}
+  function extractPhones(text){
+    var t=String(text||''),found=[],seen={},mobileLabelSeen=false,m;
+    function push(raw,weight){raw=raw.trim().replace(/[.,;]+$/,'');var digits=raw.replace(/\D/g,'');if(digits.length<7||digits.length>15)return;if(isDateShaped(raw))return;if(/^\d{4}\s*[-–]\s*\d{4}$/.test(raw))return;if(seen[digits])return;seen[digits]=true;found.push({raw:raw,digits:digits,w:weight});}
+    var labelRe=/\b(tel|telephone|phone|mob|mobile|cell|whatsapp|ph|contact|call|m|mo)\b\s*[.:#\-]?\s*((?:\+|00)?[\d][\d\s\-().\/]{5,22}\d)/gi;
+    while((m=labelRe.exec(t))){var lbl=m[1].toLowerCase();var isMobile=lbl==='mob'||lbl==='mobile'||lbl==='cell'||lbl==='whatsapp'||lbl==='m'||lbl==='mo';if(isMobile)mobileLabelSeen=true;push(m[2],isMobile?10:7);}
+    var genericRe=/(?:\+|00)?\d[^\S\n\r]*[\d \-().\/]{5,22}\d/g;
+    while((m=genericRe.exec(t))){
+      var raw=m[0],digits=raw.replace(/\D/g,''),w=0;
+      if(/^\+/.test(raw.trim()))w=6;else if(/^00\d/.test(raw.trim()))w=6;else if(digits.length===10&&/^[6-9]/.test(digits))w=5;else if(digits.length===10)w=3;else if(digits.length>=8)w=2;else w=1;
+      if(seen[digits])continue;
+      var before=t.slice(Math.max(0,m.index-30),m.index).toLowerCase(),after=t.slice(m.index+raw.length,m.index+raw.length+15).toLowerCase();
+      if(/pin|zip|code|road|street|nagar|marg|sector|colony|block|suite|floor|apt/.test(before)&&digits.length===6)continue;
+      if(/pin|zip|code/.test(after)&&digits.length===6)continue;
+      push(raw,w);
+    }
+    if(!found.length)return '';
+    if(mobileLabelSeen){var mob=found.filter(function(f){return f.w>=10;})[0];if(mob)return mob.raw;}
+    found.sort(function(a,b){return b.w-a.w;});
+    return found[0].raw;
+  }
+  function extractDate(text){
+    var t=String(text||''),out=[],m;
+    function add(raw,w,idx){raw=raw.trim().replace(/[,;]+$/,'');if(!raw)return;out.push({raw:raw,w:w,idx:idx});}
+    var isoRe=/\b(\d{4}[-\/.]\d{1,2}[-\/.]\d{1,2})\b/g;
+    while((m=isoRe.exec(t)))add(m[1],4,m.index);
+    var dmyRe=new RegExp('\\b((?:mon|tue|tues|wed|thu|thur|thurs|fri|sat|sun)[a-z]*,?\\s+)?(\\d{1,2})(?:st|nd|rd|th)?\\s+(?:of\\s+)?('+MONTH_ALT+')\\.?,?\\s+(\\d{2,4})\\b','gi');
+    while((m=dmyRe.exec(t)))add(m[0],6,m.index);
+    var mdyRe=new RegExp('\\b('+MONTH_ALT+')\\.?\\s+(\\d{1,2})(?:st|nd|rd|th)?,?\\s+(\\d{2,4})\\b','gi');
+    while((m=mdyRe.exec(t)))add(m[0],6,m.index);
+    var numRe=/\b(\d{1,2}\s*[\/\-.]\s*\d{1,2}\s*[\/\-.]\s*\d{2,4})\b/g;
+    while((m=numRe.exec(t)))add(m[1],4,m.index);
+    if(!out.length)return '';
+    out.forEach(function(d){var before=t.slice(Math.max(0,d.idx-45),d.idx).toLowerCase();if(/\b(date|on|dated|rsvp|when|by|schedule|ceremony|at)\b\s*[:\-]?$|\b(date|rsvp)\s*[:\-]\s*$/.test(before))d.w+=2;if(/\bon\b|\bdate\b|\brsvp\b/.test(before))d.w+=1;});
+    out.sort(function(a,b){return b.w-a.w||a.idx-b.idx;});
+    return out[0].raw;
+  }
+  function looksLikeName(line){
+    if(!line||/\d/.test(line))return false;
+    if(line.indexOf('@')!==-1)return false;
+    if(LABEL_LINE_RE.test(line))return false;
+    var words=line.split(/\s+/).filter(Boolean);
+    if(words.length<2||words.length>4)return false;
+    if(hasWord(line,DESIGNATION_WORDS))return false;
+    if(hasWord(line,COMPANY_WORDS))return false;
+    if(/[|]/.test(line))return false;
+    var ok=words.every(function(w){w=w.replace(/[^A-Za-z.'\-]/g,'');if(!w)return false;if(/^[A-Z]\.?$/.test(w))return true;return /^[A-Z][a-z'’.\-]*$/.test(w)||/^[A-Z]{2,}$/.test(w);});
+    return ok;
+  }
+  function extractName(text){
+    var t=String(text||''),lines=splitLines(t),m;
+    m=t.match(/\bname\s*[:\-–]\s*([^\n]+)/i);
+    if(m){var v=cleanLine(m[1]);if(v&&v.length<60&&!/\d/.test(v))return v;}
+    m=t.match(/\bdear\s+((?:mr|mrs|ms|miss|dr|prof|er|adv|shri|smt)\.?\s+)?([A-Z][A-Za-z.'’\-]+(?:\s+[A-Z][A-Za-z.'’\-]+){0,3})/);
+    if(m)return cleanLine((m[1]||'')+m[2]);
+    for(var i=0;i<lines.length;i++){m=lines[i].match(/^((?:mr|mrs|ms|miss|dr|prof|er|adv|shri|smt|mr\.)\.?\s+.+)$/i);if(m){var cand=cleanLine(m[1]);if(cand&&!/\d/.test(cand))return cand;}}
+    var half=lines.slice(0,Math.max(6,Math.ceil(lines.length/2)));
+    for(var j=0;j<half.length;j++){if(looksLikeName(half[j]))return cleanLine(half[j]);}
+    return '';
+  }
+  function addressScore(line){
+    if(!line||line.length<6)return 0;var s=0,low=line.toLowerCase();
+    for(var i=0;i<ADDRESS_KEYWORDS.length;i++){if(low.indexOf(ADDRESS_KEYWORDS[i])!==-1){s+=2;break;}}
+    if(/\b\d{6}\b/.test(line)||/\b\d{5}(?:-\d{4})?\b/.test(line))s+=2;
+    if(/^\d/.test(line))s+=1;
+    if(/,\s*$/.test(line)||/,\s/.test(line))s+=1;
+    if(line.indexOf('@')!==-1)return 0;
+    if(/\b(?:tel|phone|mob|mobile|ph|whatsapp|www\.|http)\b/i.test(low))s-=3;
+    if(hasWord(line,COMPANY_WORDS)&&!/road|street|nagar|sector|floor|suite|plot|building|tower|office| complex|plaza|market|centre|center/.test(low))s-=2;
+    return s;
+  }
+  function extractAddress(text){
+    var t=String(text||''),lines=splitLines(t),m;
+    for(var i=0;i<lines.length;i++){
+      m=lines[i].match(/^\s*(?:address|addr|venue|registered office|office)\s*[:\-–]\s*(.*)$/i);
+      if(m){
+        var parts=[],first=cleanLine(m[1]);
+        if(first)parts.push(first);
+        for(var k=i+1;k<lines.length&&parts.length<4;k++){
+          var nxt=lines[k];if(!nxt)break;
+          if(LABEL_LINE_RE.test(nxt))break;
+          if(nxt.indexOf('@')!==-1)break;
+          if(/^\+?\d[\d\s\-().]{6,}$/.test(nxt))break;
+          if(addressScore(nxt)>0||/^[a-z0-9,&/..\-]/.test(nxt)||first.slice(-1)===','){parts.push(cleanLine(nxt));if(!/[,/]$/.test(nxt)&&addressScore(nxt)<2)break;}
+          else break;
+        }
+        var joined=parts.join(', ').replace(/,\s*,/g,',').trim();
+        if(joined)return joined;
+      }
+    }
+    var scores=lines.map(addressScore),best='',bestScore=0;
+    for(var a=0;a<lines.length;a++){
+      if(scores[a]<=0)continue;
+      var run=[cleanLine(lines[a])],runScore=scores[a];
+      for(var b=a+1;b<lines.length&&run.length<4;b++){if(scores[b]>0){run.push(cleanLine(lines[b]));runScore+=scores[b];}else break;}
+      if(runScore>bestScore){bestScore=runScore;best=run.join(', ');}
+      a=a+run.length-1;
+    }
+    if(best&&bestScore>=3)return best.replace(/,\s*,/g,',').trim();
+    return '';
+  }
+  function extractAll(text){var t=String(text||'');return{name:extractName(t),address:extractAddress(t),email:extractEmail(t),mobile:extractPhones(t),date:extractDate(t)};}
+  return{extractAll:extractAll};
+})();
+
+/* ---------- app ---------- */
+var FIELDS=[
+  {key:'name',    label:'Name',     icon:'👤', hint:'Person or addressee name'},
+  {key:'address', label:'Address',  icon:'📍', hint:'Street address, city, PIN/ZIP'},
+  {key:'email',   label:'Email',    icon:'✉️', hint:'Email address'},
+  {key:'mobile',  label:'Mobile',   icon:'📱', hint:'Phone / mobile number'},
+  {key:'date',    label:'Date',     icon:'📅', hint:'Event / appointment / RSVP date'}
+];
+var $=function(id){return document.getElementById(id);};
+var currentData=null, currentRaw='';
+
+function toast(msg){var t=$('toast');t.textContent=msg;t.classList.add('show');clearTimeout(t._h);t._h=setTimeout(function(){t.classList.remove('show');},2200);}
+
+function renderFields(data,raw){
+  currentData=data;currentRaw=raw||'';
+  var host=$('fields');host.innerHTML='';
+  var foundCount=0;
+  FIELDS.forEach(function(f){
+    var val=data[f.key]||'';
+    if(val)foundCount++;
+    var wrap=document.createElement('div');wrap.className='field';
+    var badge=val?'<span class="badge ok">found</span>':'<span class="badge miss">tap to add</span>';
+    wrap.innerHTML='<label><span class="ico">'+f.icon+'</span>'+f.label+' '+badge+'</label>'+
+      '<input type="text" id="f_'+f.key+'" value="'+val.replace(/"/g,'&quot;')+'" placeholder="'+f.hint+'" class="'+(val?'filled':'missing')+'">'+
+      '<div class="hint">'+f.hint+'</div>';
+    host.appendChild(wrap);
+    var inp=wrap.querySelector('input');
+    inp.addEventListener('input',function(){
+      currentData[f.key]=inp.value.trim();
+      inp.classList.toggle('filled',!!currentData[f.key]);
+      inp.classList.toggle('missing',!currentData[f.key]);
+      var b=wrap.querySelector('.badge');b.textContent=currentData[f.key]?'found':'tap to add';
+      b.className='badge '+(currentData[f.key]?'ok':'miss');
+      renderActions();
+    });
+  });
+  $('rawBox').textContent=raw||'';
+  $('resultCard').style.display='block';
+  renderActions();
+  if(foundCount===0)toast('No fields detected — tap a field to type it in');
+}
+
+function fmtDate(d){var x=new Date(d);return isNaN(x)?d:x.toLocaleDateString(undefined,{day:'numeric',month:'short',year:'numeric'})+', '+x.toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'});}
+
+function collectValues(){
+  FIELDS.forEach(function(f){var el=$('f_'+f.key);if(el)currentData[f.key]=el.value.trim();});
+  return currentData;
+}
+
+function plainText(d){
+  var skip=['Name','Address','Email','Mobile','Date'];
+  var lines=[];
+  if(d.name)lines.push('Name: '+d.name);
+  if(d.address)lines.push('Address: '+d.address);
+  if(d.email)lines.push('Email: '+d.email);
+  if(d.mobile)lines.push('Mobile: '+d.mobile);
+  if(d.date)lines.push('Date: '+d.date);
+  var extra=Object.keys(d).filter(function(k){return skip.indexOf(k)===-1&&d[k];}).map(function(k){return k+': '+d[k];});
+  return lines.concat(extra).join('\n')||'';
+}
+
+function vcard(d){
+  var lines=['BEGIN:VCARD','VERSION:3.0'];
+  if(d.name){lines.push('FN:'+d.name);lines.push('N:'+d.name.split(/\s+/).reverse().join(';')+';;;');}
+  if(d.company)lines.push('ORG:'+d.company);
+  if(d.designation)lines.push('TITLE:'+d.designation);
+  if(d.mobile){var tel=d.mobile.replace(/[^\d+]/g,'');lines.push('TEL;TYPE=CELL:'+tel);}
+  if(d.email)lines.push('EMAIL;TYPE=INTERNET:'+d.email);
+  if(d.address)lines.push('ADR;TYPE=WORK:;;'+d.address.replace(/\n/g,' ')+';;;;');
+  if(d.website)lines.push('URL:'+d.website);
+  lines.push('END:VCARD');
+  return lines.join('\r\n');
+}
+
+function download(name,content,mime){
+  var a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([content],{type:mime}));
+  a.download=name;a.click();setTimeout(function(){URL.revokeObjectURL(a.href);},1500);
+}
+
+function copy(text){
+  if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(text).then(function(){toast('Copied to clipboard ✓');},fallbackCopy);}
+  else fallbackCopy();
+  function fallbackCopy(){var ta=document.createElement('textarea');ta.value=text;document.body.appendChild(ta);ta.select();try{document.execCommand('copy');toast('Copied to clipboard ✓');}catch(e){toast('Copy failed — please copy manually');}document.body.removeChild(ta);}
+}
+
+function share(){
+  var d=collectValues(),text='📇 Card Details\n\n'+plainText(d);
+  if(navigator.share){navigator.share({title:'Card Details',text:text}).catch(function(){});}
+  else copy(text);
+}
+
+function renderActions(){
+  var d=collectValues();
+  var hasAny=FIELDS.some(function(f){return d[f.key];});
+  var host=$('actions');host.innerHTML='';
+  if(!hasAny)return;
+  var b;
+  b=mk('btn primary','📤 Share','share');host.appendChild(b);
+  b=mk('btn ghost','📋 Copy all');b.onclick=function(){copy(plainText(d));};host.appendChild(b);
+  b=mk('btn ghost','🟢 WhatsApp');b.onclick=function(){window.open('https://wa.me/?text='+encodeURIComponent(plainText(d)),'_blank');};host.appendChild(b);
+  b=mk('btn ghost','✉️ Email');b.onclick=function(){var s='Card Details';if(d.name)s+=' – '+d.name;window.location.href='mailto:?subject='+encodeURIComponent(s)+'&body='+encodeURIComponent(plainText(d));};host.appendChild(b);
+  b=mk('btn ghost','👤 Save contact (.vcf)');b.onclick=function(){download((d.name||'contact').replace(/[^\w]+/g,'_')+'.vcf',vcard(d),'text/vcard');};host.appendChild(b);
+  b=mk('btn ghost','📄 Text file (.txt)');b.onclick=function(){download((d.name||'card')+'-details.txt',plainText(d),'text/plain');};host.appendChild(b);
+  saveHistory(d);
+}
+function mk(cls,txt,act){
+  var b=document.createElement('button');b.className=cls;b.textContent=txt;
+  if(act)b.onclick=share;return b;
+}
+
+/* ---------- history (localStorage) ---------- */
+function saveHistory(d){
+  var h=readHistory();
+  h.unshift({t:Date.now(),d:d});
+  h=h.slice(0,10);
+  try{localStorage.setItem('cardExtractHistory',JSON.stringify(h));}catch(e){}
+  renderHistory();
+}
+function readHistory(){try{return JSON.parse(localStorage.getItem('cardExtractHistory')||'[]');}catch(e){return [];}}
+function renderHistory(){
+  var h=readHistory(),host=$('historyList');
+  $('historyCard').style.display=h.length?'block':'none';
+  host.innerHTML='';
+  h.forEach(function(item){
+    var row=document.createElement('div');row.className='history-item';
+    var nm=item.d.name||item.d.mobile||item.d.email||'(no name)';
+    row.innerHTML='<div><div class="who">'+nm.replace(/</g,'&lt;')+'</div><div class="when">'+fmtDate(item.t)+'</div></div>';
+    var bb=document.createElement('button');bb.className='btn ghost small';bb.textContent='Load';
+    bb.onclick=function(){renderFields(Object.assign({},item.d),'');window.scrollTo({top:$('resultCard').offsetTop-20,behavior:'smooth'});};
+    row.appendChild(bb);host.appendChild(row);
+  });
+}
+
+/* ---------- text path ---------- */
+$('btnText').onclick=function(){
+  var t=$('textInput').value.trim();
+  if(!t){toast('Paste some card text first');return;}
+  renderFields(CardExtractor.extractAll(t),t);
+};
+$('btnClearText').onclick=function(){$('textInput').value='';};
+
+/* ---------- image path (OCR) ---------- */
+var drop=$('drop'),fileInput=$('fileInput');
+drop.onclick=function(){fileInput.click();};
+drop.ondragover=function(e){e.preventDefault();drop.classList.add('drag');};
+drop.ondragleave=function(){drop.classList.remove('drag');};
+drop.ondrop=function(e){e.preventDefault();drop.classList.remove('drag');if(e.dataTransfer.files[0])handleFile(e.dataTransfer.files[0]);};
+fileInput.onchange=function(){if(fileInput.files[0])handleFile(fileInput.files[0]);};
+
+async function handleFile(file){
+  if(!/^image\//.test(file.type)){toast('Please choose an image file');return;}
+  var url=URL.createObjectURL(file);
+  var pv=$('preview');pv.src=url;pv.style.display='block';
+  $('progressWrap').style.display='block';
+  $('progressFill').style.width='0%';
+  $('progressText').textContent='Loading OCR engine…';
+  try{
+    var worker=await Tesseract.createWorker('eng',1,{logger:function(m){
+      if(m.status==='recognizing text'){
+        $('progressFill').style.width=Math.round(m.progress*100)+'%';
+        $('progressText').textContent='Reading text… '+Math.round(m.progress*100)+'%';
+      }else{$('progressText').textContent=m.status;}
+    }});
+    var res=await worker.recognize(url);
+    await worker.terminate();
+    var text=res.data.text.trim();
+    $('progressWrap').style.display='none';
+    if(!text){toast('No readable text found — try a sharper photo');return;}
+    renderFields(CardExtractor.extractAll(text),text);
+  }catch(err){
+    $('progressWrap').style.display='none';
+    toast('OCR failed — check internet (first load) or try another image');
+  }
+}
+
+$('btnClearHist').onclick=function(){localStorage.removeItem('cardExtractHistory');renderHistory();toast('History cleared');};
+renderHistory();
+</script>
+</body>
+</html>
