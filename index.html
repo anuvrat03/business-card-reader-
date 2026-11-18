@@ -15,12 +15,9 @@
         label { display: block; font-size: 0.85rem; color: #3c4043; margin-bottom: 4px; }
         input, textarea, button { display: block; width: 100%; margin-bottom: 12px; box-sizing: border-box; font-family: inherit; }
         input[type="file"] { padding: 10px; background: #e8f0fe; border: 1px dashed #1a73e8; border-radius: 4px; cursor: pointer; }
-        input[type="text"], input[type="password"], textarea { padding: 8px 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.95rem; }
+        input[type="text"], textarea { padding: 8px 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.95rem; }
         .btn-primary { background: #1a73e8; color: white; border: none; padding: 11px; border-radius: 4px; cursor: pointer; font-weight: bold; }
         .btn-success { background: #188038; color: white; border: none; padding: 11px; border-radius: 4px; cursor: pointer; font-weight: bold; margin-bottom: 0; }
-        .api-row { display: flex; gap: 8px; }
-        .api-row input { margin-bottom: 0; }
-        .api-row button { width: auto; padding: 0 14px; margin-bottom: 0; white-space: nowrap; }
     </style>
 </head>
 <body>
@@ -28,16 +25,6 @@
 <div class="container">
     <h2>AI Card Extractor</h2>
     <div class="subtitle">Powered by Free Google AI Studio (Gemini)</div>
-
-    <!-- API KEY SETUP (Stored locally on your phone only) -->
-    <div class="card-box">
-        <label><strong>GEMINI API KEY (Saved locally on device)</strong></label>
-        <div class="api-row">
-            <input type="password" id="apiKeyInput" placeholder="Paste AIzaSy... key here">
-            <button class="btn-primary" onclick="saveApiKey()">Save</button>
-        </div>
-        <div id="keyStatus" style="font-size: 0.78rem; color: #188038; margin-top: 5px;"></div>
-    </div>
 
     <!-- 1. SNAP OR UPLOAD -->
     <div class="card-box">
@@ -78,24 +65,8 @@
 </div>
 
 <script>
-    // Load saved API key on page load
-    window.addEventListener('DOMContentLoaded', () => {
-        const savedKey = localStorage.getItem('gemini_card_api_key');
-        if (savedKey) {
-            document.getElementById('apiKeyInput').value = savedKey;
-            document.getElementById('keyStatus').innerText = 'API Key loaded from browser storage.';
-        }
-    });
-
-    function saveApiKey() {
-        const key = document.getElementById('apiKeyInput').value.trim();
-        if (!key) {
-            alert('Please enter a valid Gemini API key.');
-            return;
-        }
-        localStorage.setItem('gemini_card_api_key', key);
-        document.getElementById('keyStatus').innerText = 'API Key saved securely in your browser!';
-    }
+    // Embedded API Key
+    const API_KEY = "AQ.Ab8RN6J3ROBQV263iD3OZo4yNGqHg8uU49xChTnVjr1quz67Ag";
 
     document.getElementById('imageInput').addEventListener('change', async function(event) {
         const file = event.target.files[0];
@@ -106,18 +77,12 @@
 
         if (!file) return;
 
-        const apiKey = document.getElementById('apiKeyInput').value.trim() || localStorage.getItem('gemini_card_api_key');
-        if (!apiKey) {
-            errorContainer.innerText = 'Error: Please enter and save your Google AI Studio API Key above first.';
-            return;
-        }
-
         try {
             statusContainer.innerText = 'Analyzing business card with Gemini AI...';
             const base64Data = await convertFileToBase64(file);
             const mimeType = file.type || 'image/jpeg';
 
-            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${encodeURIComponent(apiKey)}`;
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${encodeURIComponent(API_KEY)}`;
 
             const promptText = `Extract contact details from this business card image. Return ONLY valid JSON with these exact keys: "name", "company", "role", "address", "email", "mobile". Leave a field as an empty string "" if not present on the card.`;
 
@@ -155,7 +120,6 @@
                 throw new Error('No text returned from Gemini API.');
             }
 
-            // Strip markdown fences if present and parse JSON
             const cleanJson = rawJsonText.replace(/```json|```/g, '').trim();
             const extractedData = JSON.parse(cleanJson);
 
