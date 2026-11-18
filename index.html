@@ -3,10 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Business & Invitation Card Extractor</title>
-    <!-- Tailwind CSS for clean mobile-friendly UI -->
+    <title>Business Card Extractor v4</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Tesseract.js for OCR -->
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 </head>
 <body class="bg-slate-50 text-slate-800 min-h-screen p-3 sm:p-6">
@@ -15,7 +13,7 @@
         <!-- Header -->
         <header class="text-center">
             <h1 class="text-xl sm:text-2xl font-bold text-blue-600">Card Details Extractor</h1>
-            <p class="text-xs sm:text-sm text-slate-500">Extracts clean contact & address info instantly</p>
+            <p class="text-xs sm:text-sm text-slate-500">Clean, structured field extraction</p>
         </header>
 
         <!-- Step 1: Paste Text -->
@@ -37,7 +35,13 @@
 
         <!-- Step 3: Extracted Details -->
         <section class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 space-y-4">
-            <label class="block text-xs font-semibold uppercase tracking-wider text-blue-600">3. Extracted details (editable)</label>
+            <div class="flex justify-between items-center">
+                <label class="block text-xs font-semibold uppercase tracking-wider text-blue-600">3. Extracted details (editable)</label>
+                <!-- Upload Next Card Button -->
+                <button onclick="resetForNextCard()" class="bg-blue-50 hover:bg-blue-100 text-blue-600 font-semibold text-xs py-1.5 px-3 rounded-lg border border-blue-200 transition flex items-center gap-1">
+                    🔄 Upload Next Card
+                </button>
+            </div>
             
             <!-- Name -->
             <div>
@@ -45,10 +49,16 @@
                 <input type="text" id="fieldName" class="w-full p-2.5 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" placeholder="Person name">
             </div>
 
-            <!-- Company / Designation -->
+            <!-- Company -->
             <div>
-                <label class="block text-xs font-medium text-slate-500 mb-1">Company & Designation</label>
-                <input type="text" id="fieldCompany" class="w-full p-2.5 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" placeholder="Company, Title, Role">
+                <label class="block text-xs font-medium text-slate-500 mb-1">Company Name</label>
+                <input type="text" id="fieldCompany" class="w-full p-2.5 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" placeholder="Company / Organization">
+            </div>
+
+            <!-- Designation -->
+            <div>
+                <label class="block text-xs font-medium text-slate-500 mb-1">Designation / Role</label>
+                <input type="text" id="fieldDesignation" class="w-full p-2.5 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" placeholder="Job title / Role">
             </div>
 
             <!-- Address -->
@@ -69,29 +79,11 @@
                 <input type="text" id="fieldMobile" class="w-full p-2.5 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" placeholder="Phone / mobile number">
             </div>
 
-            <!-- Date -->
-            <div>
-                <label class="block text-xs font-medium text-slate-500 mb-1">Date</label>
-                <input type="text" id="fieldDate" class="w-full p-2.5 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" placeholder="Event / appointment date">
-            </div>
-
             <!-- Action Buttons -->
             <div class="flex flex-wrap gap-2 pt-2">
                 <button onclick="copyAll()" class="bg-slate-800 hover:bg-slate-900 text-white text-xs font-medium py-2 px-3 rounded-lg transition">Copy All</button>
                 <button onclick="shareData()" class="bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium py-2 px-3 rounded-lg transition">Share</button>
                 <button onclick="saveContact()" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium py-2 px-3 rounded-lg transition">Save vCard (.vcf)</button>
-                <button onclick="saveHistory()" class="bg-amber-600 hover:bg-amber-700 text-white text-xs font-medium py-2 px-3 rounded-lg transition">Save to History</button>
-            </div>
-        </section>
-
-        <!-- Saved History Section -->
-        <section class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 space-y-3">
-            <div class="flex justify-between items-center">
-                <label class="block text-xs font-semibold uppercase tracking-wider text-slate-500">Saved on this device</label>
-                <button onclick="clearHistory()" class="text-xs text-red-500 hover:underline">Clear history</button>
-            </div>
-            <div id="historyList" class="space-y-2 text-sm text-slate-600 max-h-40 overflow-y-auto">
-                <p class="text-xs text-slate-400 italic">No saved cards yet.</p>
             </div>
         </section>
 
@@ -100,88 +92,84 @@
         </footer>
     </div>
 
-    <!-- JavaScript Parsing & OCR Logic -->
+    <!-- JavaScript Parsing & Reset Logic -->
     <script>
         function processText() {
             const rawText = document.getElementById('rawTextInput').value;
             if (!rawText.trim()) return;
 
-            const lines = rawText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+            const lines = rawText.split('\n')
+                .map(l => l.trim())
+                .filter(l => {
+                    if (l.length < 3) return false;
+                    const letters = (l.match(/[a-zA-Z]/g) || []).length;
+                    const symbols = (l.match(/[^a-zA-Z0-9\s]/g) || []).length;
+                    if (symbols > letters) return false;
+                    return true;
+                });
             
             let name = "";
-            let companyParts = [];
-            let addressParts = [];
+            let company = "";
+            let designation = "";
+            let addressLines = [];
             let email = "";
             let mobile = "";
-            let date = "";
 
             const emailRegex = /[\w.-]+@[\w.-]+\.\w+/;
-            // Matches phone numbers with country codes or standard 10 digit formats
             const mobileRegex = /(\+?\d{1,3}[-.\s]?)?\(?\d{2,4}\)?[-.\s]?\d{3,5}[-.\s]?\d{4}/;
-            const dateRegex = /\b(\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}[/-]\d{1,2}[/-]\d{1,2})\b/;
             
-            const companyKeywords = ['pvt', 'ltd', 'limited', 'corp', 'corporation', 'technologies', 'solutions', 'associates', 'enterprises', 'industries', 'group', 'services', 'marketing', 'consultants'];
-            const titleKeywords = ['manager', 'director', 'founder', 'ceo', 'partner', 'consultant', 'executive', 'officer', 'president', 'lead', 'head'];
-            const addressKeywords = ['road', 'rd', 'street', 'st', 'nagar', 'colony', 'floor', 'block', 'opp', 'near', 'lane', 'avenue', 'h.no', 'flat', 'plot', 'district', 'telangana', 'hyderabad', 'bengaluru', 'delhi', 'mumbai', 'pin', 'zip'];
+            const companyKeywords = ['pvt', 'ltd', 'limited', 'corp', 'corporation', 'technologies', 'solutions', 'associates', 'enterprises', 'publication', 'industries', 'group', 'services', 'marketing', 'consultants'];
+            const titleKeywords = ['manager', 'director', 'founder', 'ceo', 'partner', 'consultant', 'executive', 'officer', 'president', 'lead', 'head', 'editor', 'author'];
+            const addressKeywords = ['road', 'rd', 'street', 'st', 'nagar', 'colony', 'floor', 'block', 'opp', 'near', 'lane', 'avenue', 'h.no', 'flat', 'plot', 'district', 'telangana', 'hyderabad', 'bengaluru', 'delhi', 'mumbai', 'pin', 'zip', 'off:'];
 
-            lines.forEach((line, index) => {
+            lines.forEach((line) => {
                 const lower = line.toLowerCase();
 
-                // 1. Check Email
                 if (emailRegex.test(line)) {
                     const match = line.match(emailRegex);
                     if (match) email = match[0];
                     return;
                 }
 
-                // 2. Check Mobile
                 if (mobileRegex.test(line) && !addressKeywords.some(k => lower.includes(k))) {
                     const match = line.match(mobileRegex);
                     if (match && !mobile) mobile = match[0];
                     return;
                 }
 
-                // 3. Check Date
-                if (dateRegex.test(line)) {
-                    const match = line.match(dateRegex);
-                    if (match) date = match[0];
+                const isCompany = companyKeywords.some(kw => lower.includes(kw));
+                if (isCompany && !company) {
+                    company = line;
                     return;
                 }
 
-                // 4. Check Company / Title
-                const hasCompanyKeyword = companyKeywords.some(kw => lower.includes(kw));
-                const hasTitleKeyword = titleKeywords.some(kw => lower.includes(kw));
-                if (hasCompanyKeyword || hasTitleKeyword) {
-                    companyParts.push(line);
+                const isTitle = titleKeywords.some(kw => lower.includes(kw));
+                if (isTitle && !designation) {
+                    designation = line;
                     return;
                 }
 
-                // 5. Check Address
-                const hasAddressKeyword = addressKeywords.some(kw => lower.includes(kw)) || /\d{5,6}/.test(line);
-                if (hasAddressKeyword) {
-                    addressParts.push(line);
+                const isAddress = addressKeywords.some(kw => lower.includes(kw)) || /\b\d{6}\b/.test(line);
+                if (isAddress || (addressLines.length > 0 && !name)) {
+                    addressLines.push(line);
                     return;
                 }
 
-                // 6. Default fallback for Name (usually first non-empty clean line if not categorized yet)
-                if (!name && index <= 2 && line.length < 35 && !/\d/.test(line)) {
+                if (!name && line.length < 30 && !/\d/.test(line) && !isCompany && !isTitle) {
                     name = line;
+                } else if (!addressLines.length && !company) {
+                    company = line;
                 } else {
-                    // Stays in company/designation or address depending on length/context
-                    if (line.length < 30 && companyParts.length === 0) {
-                        companyParts.push(line);
-                    } else {
-                        addressParts.push(line);
-                    }
+                    addressLines.push(line);
                 }
             });
 
             document.getElementById('fieldName').value = name;
-            document.getElementById('fieldCompany').value = companyParts.join(', ');
-            document.getElementById('fieldAddress').value = addressParts.join(', ');
+            document.getElementById('fieldCompany').value = company;
+            document.getElementById('fieldDesignation').value = designation;
+            document.getElementById('fieldAddress').value = addressLines.join(', ');
             document.getElementById('fieldEmail').value = email;
             document.getElementById('fieldMobile').value = mobile;
-            document.getElementById('fieldDate').value = date;
         }
 
         async function handleImageUpload(event) {
@@ -214,14 +202,20 @@
             document.getElementById('rawTextInput').value = '';
             document.getElementById('fieldName').value = '';
             document.getElementById('fieldCompany').value = '';
+            document.getElementById('fieldDesignation').value = '';
             document.getElementById('fieldAddress').value = '';
             document.getElementById('fieldEmail').value = '';
             document.getElementById('fieldMobile').value = '';
-            document.getElementById('fieldDate').value = '';
+            document.getElementById('imageInput').value = '';
+        }
+
+        function resetForNextCard() {
+            clearAll();
+            window.scrollTo({ top: 0, behavior: 'smooth' });
         }
 
         function copyAll() {
-            const summary = `Name: ${document.getElementById('fieldName').value}\nCompany/Role: ${document.getElementById('fieldCompany').value}\nAddress: ${document.getElementById('fieldAddress').value}\nEmail: ${document.getElementById('fieldEmail').value}\nMobile: ${document.getElementById('fieldMobile').value}\nDate: ${document.getElementById('fieldDate').value}`;
+            const summary = `Name: ${document.getElementById('fieldName').value}\nCompany: ${document.getElementById('fieldCompany').value}\nDesignation: ${document.getElementById('fieldDesignation').value}\nAddress: ${document.getElementById('fieldAddress').value}\nEmail: ${document.getElementById('fieldEmail').value}\nMobile: ${document.getElementById('fieldMobile').value}`;
             navigator.clipboard.writeText(summary);
             alert('Copied to clipboard!');
         }
@@ -250,64 +244,6 @@
             a.download = `${name.replace(/\s+/g, '_')}.vcf`;
             a.click();
         }
-
-        function saveHistory() {
-            const mobile = document.getElementById('fieldMobile').value || document.getElementById('fieldName').value || 'Card';
-            const historyData = JSON.parse(localStorage.getItem('cardHistory') || '[]');
-            historyData.unshift({
-                title: mobile,
-                date: new Date().toLocaleDateString(),
-                data: {
-                    name: document.getElementById('fieldName').value,
-                    company: document.getElementById('fieldCompany').value,
-                    address: document.getElementById('fieldAddress').value,
-                    email: document.getElementById('fieldEmail').value,
-                    mobile: document.getElementById('fieldMobile').value,
-                    date: document.getElementById('fieldDate').value
-                }
-            });
-            localStorage.setItem('cardHistory', JSON.stringify(historyData.slice(0, 10)));
-            loadHistory();
-            alert('Saved to local history!');
-        }
-
-        function loadHistory() {
-            const historyList = document.getElementById('historyList');
-            const historyData = JSON.parse(localStorage.getItem('cardHistory') || '[]');
-            if (historyData.length === 0) {
-                historyList.innerHTML = `<p class="text-xs text-slate-400 italic">No saved cards yet.</p>`;
-                return;
-            }
-            historyList.innerHTML = historyData.map((item, idx) => `
-                <div class="flex justify-between items-center bg-slate-50 p-2 rounded border border-slate-200">
-                    <div>
-                        <span class="font-medium text-slate-800">${item.title}</span>
-                        <span class="text-xs text-slate-400 block">${item.date}</span>
-                    </div>
-                    <button onclick="restoreHistory(${idx})" class="text-xs bg-blue-50 text-blue-600 px-2 py-1 rounded hover:bg-blue-100">Load</button>
-                </div>
-            `).join('');
-        }
-
-        function restoreHistory(idx) {
-            const historyData = JSON.parse(localStorage.getItem('cardHistory') || '[]');
-            const item = historyData[idx];
-            if (item) {
-                document.getElementById('fieldName').value = item.data.name || '';
-                document.getElementById('fieldCompany').value = item.data.company || '';
-                document.getElementById('fieldAddress').value = item.data.address || '';
-                document.getElementById('fieldEmail').value = item.data.email || '';
-                document.getElementById('fieldMobile').value = item.data.mobile || '';
-                document.getElementById('fieldDate').value = item.data.date || '';
-            }
-        }
-
-        function clearHistory() {
-            localStorage.removeItem('cardHistory');
-            loadHistory();
-        }
-
-        window.onload = loadHistory;
     </script>
 </body>
 </html>
