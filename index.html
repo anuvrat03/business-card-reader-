@@ -1,56 +1,250 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Text to Contact</title>
+    <title>Smart Contact & Flyer Sorter</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
-        body { font-family: sans-serif; padding: 20px; }
-        textarea { width: 100%; height: 150px; margin-bottom: 10px; }
-        button { padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 5px; font-size: 16px; }
+        body { font-family: sans-serif; padding: 15px; background: #f4f4f9; }
+        
+        /* Mode Selector Styles */
+        .mode-selector { display: flex; gap: 10px; margin-bottom: 15px; }
+        .mode-btn { flex: 1; padding: 10px; border: 2px solid #007bff; background: white; color: #007bff; border-radius: 5px; font-weight: bold; cursor: pointer; transition: 0.2s; }
+        .mode-btn.active { background: #007bff; color: white; }
+
+        textarea { width: 100%; height: 120px; margin-bottom: 10px; padding: 10px; border-radius: 5px; border: 1px solid #ccc; box-sizing: border-box; font-size: 14px;}
+        .action-btn { padding: 12px; width: 100%; background: #28a745; color: white; border: none; border-radius: 5px; font-size: 16px; font-weight: bold; cursor: pointer; margin-bottom: 15px;}
+        
+        .results-section { display: none; }
+        
+        /* Contact Mode Styles */
+        .preview-box { background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); margin-bottom: 15px;}
+        label { font-size: 12px; color: #666; font-weight: bold; }
+        input { width: 100%; margin-bottom: 10px; padding: 8px; border-radius: 5px; border: 1px solid #ccc; box-sizing: border-box; }
+
+        /* Flyer Mode Styles */
+        .line-item { display: flex; align-items: center; background: white; padding: 8px; margin-bottom: 8px; border-radius: 5px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); gap: 10px; }
+        .line-text { flex: 1; font-size: 14px; word-break: break-word; }
+        select { padding: 5px; border-radius: 4px; border: 1px solid #ccc; font-size: 12px; background: #f9f9f9; }
+        
+        /* Color coding */
+        .cat-Name { border-left: 4px solid #007bff; }
+        .cat-Phone { border-left: 4px solid #28a745; }
+        .cat-Email { border-left: 4px solid #fd7e14; }
+        .cat-Website { border-left: 4px solid #6f42c1; }
+        .cat-Address { border-left: 4px solid #dc3545; }
+        .cat-Price { border-left: 4px solid #ffc107; }
+        .cat-Date { border-left: 4px solid #17a2b8; }
+        .cat-Other { border-left: 4px solid #6c757d; }
+        
+        .summary-box { background: #e9ecef; padding: 15px; border-radius: 5px; margin-top: 20px; font-size: 14px;}
+        .summary-title { font-weight: bold; margin-bottom: 10px; text-transform: uppercase; font-size: 12px; color: #555; }
     </style>
 </head>
 <body>
 
-    <h3>Paste your text below:</h3>
-    <textarea id="rawText" placeholder="Paste card text here..."></textarea>
-    <button onclick="createContact()">Download Contact (.vcf)</button>
+    <h2>Smart Sorter</h2>
+    
+    <!-- Mode Selector -->
+    <div class="mode-selector">
+        <button id="btnModeContact" class="mode-btn active" onclick="setMode('contact')">Business Card</button>
+        <button id="btnModeFlyer" class="mode-btn" onclick="setMode('flyer')">Flyer / Menu</button>
+    </div>
+
+    <textarea id="rawText" placeholder="Paste your text here..."></textarea>
+    <button id="mainActionBtn" class="action-btn" onclick="processText()">Sort Info</button>
+
+    <!-- ================= CONTACT MODE UI ================= -->
+    <div id="contactResults" class="results-section">
+        <div class="preview-box">
+            <h3>Check & Edit Contact</h3>
+            <label>Name:</label> <input type="text" id="outName">
+            <label>Phone:</label> <input type="text" id="outPhone">
+            <label>Email:</label> <input type="text" id="outEmail">
+            <label>Website:</label> <input type="text" id="outWebsite">
+            <button onclick="downloadVCF_Contact()" style="background: #007bff; margin-top: 15px; width:100%; padding:10px; color:white; border:none; border-radius:5px; font-size:16px;">Save to Contacts (.vcf)</button>
+        </div>
+    </div>
+
+    <!-- ================= FLYER MODE UI ================= -->
+    <div id="flyerResults" class="results-section">
+        <h3>Review & Adjust Categories</h3>
+        <p style="font-size: 12px; color: #666; margin-top: 0;">Change the dropdowns if the tool guessed wrong.</p>
+        
+        <div id="linesContainer"></div>
+
+        <div class="summary-box">
+            <div class="summary-title">Extracted Contact Info</div>
+            <div id="summaryOutput"></div>
+            <button onclick="downloadVCF_Flyer()" style="background: green; margin-top: 15px; width:100%; padding:10px; color:white; border:none; border-radius:5px; font-size:16px;">Save Contact (.vcf)</button>
+        </div>
+    </div>
 
     <script>
-        function createContact() {
+        let currentMode = 'contact';
+        const categories = ["Name", "Phone", "Email", "Website", "Address", "Price", "Date", "Other"];
+
+        // 1. Switch between modes
+        function setMode(mode) {
+            currentMode = mode;
+            document.getElementById('contactResults').style.display = 'none';
+            document.getElementById('flyerResults').style.display = 'none';
+            document.getElementById('rawText').value = "";
+
+            if (mode === 'contact') {
+                document.getElementById('btnModeContact').classList.add('active');
+                document.getElementById('btnModeFlyer').classList.remove('active');
+                document.getElementById('mainActionBtn').innerText = "Extract Contact Info";
+            } else {
+                document.getElementById('btnModeFlyer').classList.add('active');
+                document.getElementById('btnModeContact').classList.remove('active');
+                document.getElementById('mainActionBtn').innerText = "Segregate Text Lines";
+            }
+        }
+
+        // 2. Main Router
+        function processText() {
             const text = document.getElementById('rawText').value;
+            if (!text.trim()) { alert("Paste some text first!"); return; }
 
-            // 1. Use Regex to find Email, Phone, and Website
+            if (currentMode === 'contact') {
+                processContactMode(text);
+            } else {
+                processFlyerMode(text);
+            }
+        }
+
+        // ================= CONTACT MODE LOGIC =================
+        function processContactMode(text) {
             const emailMatch = text.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
-            const email = emailMatch ? emailMatch[0] : "";
-
-            // Looks for a phone number (digits, spaces, dashes, and +)
             const phoneMatch = text.match(/\+?\d[\d\s\-()]{7,}\d/);
-            const phone = phoneMatch ? phoneMatch[0].replace(/[\s\-()]/g, '') : ""; // clean spaces
-
             const webMatch = text.match(/www\.[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
-            const website = webMatch ? webMatch[0] : "";
-
-            // 2. Extract Name (Assuming the first line is the name)
             const lines = text.split('\n').filter(line => line.trim() !== "");
-            const name = lines[0] || "Unknown Name";
 
-            // 3. Build the vCard (.vcf) text format
+            document.getElementById('outName').value = lines[0] || "";
+            document.getElementById('outPhone').value = phoneMatch ? phoneMatch[0] : "";
+            document.getElementById('outEmail').value = emailMatch ? emailMatch[0] : "";
+            document.getElementById('outWebsite').value = webMatch ? webMatch[0] : "";
+
+            document.getElementById('contactResults').style.display = 'block';
+        }
+
+        function downloadVCF_Contact() {
+            const name = document.getElementById('outName').value;
+            const phone = document.getElementById('outPhone').value;
+            const email = document.getElementById('outEmail').value;
+            const web = document.getElementById('outWebsite').value;
+
+            generateAndDownloadVCF(name, phone, email, web, "");
+        }
+
+        // ================= FLYER MODE LOGIC =================
+        function processFlyerMode(text) {
+            const lines = text.split('\n').map(l => l.trim()).filter(l => l !== "");
+            const container = document.getElementById('linesContainer');
+            container.innerHTML = "";
+
+            lines.forEach((line, index) => {
+                const div = document.createElement('div');
+                div.className = 'line-item';
+                div.id = `row-${index}`;
+
+                let guessedCat = guessCategory(line, index);
+                div.classList.add(`cat-${guessedCat}`);
+
+                let options = categories.map(cat => 
+                    `<option value="${cat}" ${cat === guessedCat ? 'selected' : ''}>${cat}</option>`
+                ).join('');
+
+                div.innerHTML = `
+                    <div class="line-text">${line}</div>
+                    <select onchange="updateRowColor(this, '${index}')" id="select-${index}">
+                        ${options}
+                    </select>
+                `;
+                container.appendChild(div);
+            });
+
+            document.getElementById('flyerResults').style.display = 'block';
+            updateSummary();
+        }
+
+        function guessCategory(text, index) {
+            if (text.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/)) return "Email";
+            if (text.match(/www\.|https?:\/\//)) return "Website";
+            if (text.match(/\+?\d[\d\s\-()]{7,}\d/) && !text.match(/\d{1,2}[\/\-]\d{1,2}/)) return "Phone";
+            if (text.match(/[\$\€\£\₹]\s?\d+|\d+\s?(USD|EUR|INR)/i)) return "Price";
+            if (text.match(/\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\b|\d{1,2}[\/\-]\d{1,2}|\b20\d{2}\b/i)) return "Date";
+            if (text.match(/\b(Rd|St|Ave|Blvd|Suite|Floor|Pin|Zip|Hyderabad|Secunderabad|TG|India)\b/i)) return "Address";
+            if (index === 0) return "Name"; // First line default to name
+            return "Other"; 
+        }
+
+        function updateRowColor(selectElement, index) {
+            const row = document.getElementById(`row-${index}`);
+            row.className = 'line-item'; 
+            row.classList.add(`cat-${selectElement.value}`);
+            updateSummary();
+        }
+
+        function updateSummary() {
+            let summary = { Phone: [], Email: [], Website: [], Address: [], Name: [] };
+            
+            document.querySelectorAll('.line-item').forEach((row, index) => {
+                const text = row.querySelector('.line-text').innerText;
+                const cat = document.getElementById(`select-${index}`).value;
+                if (summary[cat]) summary[cat].push(text);
+            });
+
+            let html = "";
+            if (summary.Name.length > 0) html += `<b>Name:</b> ${summary.Name[0]}<br>`;
+            if (summary.Phone.length > 0) html += `<b>Phone:</b> ${summary.Phone[0]}<br>`;
+            if (summary.Email.length > 0) html += `<b>Email:</b> ${summary.Email[0]}<br>`;
+            if (summary.Website.length > 0) html += `<b>Website:</b> ${summary.Website[0]}<br>`;
+            if (summary.Address.length > 0) html += `<b>Address:</b> ${summary.Address[0]}<br>`;
+            
+            document.getElementById('summaryOutput').innerHTML = html || "No contact info selected.";
+        }
+
+        function downloadVCF_Flyer() {
+            let name = "", phone = "", email = "", web = "", addr = "";
+
+            document.querySelectorAll('.line-item').forEach((row, index) => {
+                const text = row.querySelector('.line-text').innerText;
+                const cat = document.getElementById(`select-${index}`).value;
+                
+                if (cat === "Name" && !name) name = text;
+                if (cat === "Phone" && !phone) phone = text;
+                if (cat === "Email" && !email) email = text;
+                if (cat === "Website" && !web) web = text;
+                if (cat === "Address" && !addr) addr = text;
+            });
+
+            generateAndDownloadVCF(name, phone, email, web, addr);
+        }
+
+        // ================= SHARED DOWNLOAD LOGIC =================
+        function generateAndDownloadVCF(name, phone, email, web, addr) {
             let vCard = `BEGIN:VCARD
 VERSION:3.0
-FN:${name}
+FN:${name || "Unknown"}
 TEL:${phone}
 EMAIL:${email}
-URL:${website}
+URL:${web}
+ADR:;;${addr};;;;
 END:VCARD`;
 
-            // 4. Create the file and trigger the download
             const blob = new Blob([vCard], { type: 'text/vcard' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = "contact.vcf";
+            a.download = `${(name || "Saved_Contact").replace(/\s+/g, '_')}.vcf`;
             a.click();
             URL.revokeObjectURL(url);
+
+            // Reset UI after download
+            document.getElementById('rawText').value = "";
+            document.getElementById('contactResults').style.display = 'none';
+            document.getElementById('flyerResults').style.display = 'none';
         }
     </script>
 </body>
